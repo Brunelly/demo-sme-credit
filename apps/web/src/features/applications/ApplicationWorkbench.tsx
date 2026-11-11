@@ -3,7 +3,7 @@ import { Alert, Badge, Button, CellStack, DataTable, EmptyState, ErrorState, Ske
 import { Check, ChevronRight, Circle, FileCheck2, LoaderCircle, MessageSquareWarning, Play, RefreshCw, Scale, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useResource } from "../../lib/use-resource.ts";
-import { productLabels, scenarioLabels, stageLabels } from "./application-labels.ts";
+import { arabicStageLabels, productLabels, scenarioLabels, stageLabels } from "./application-labels.ts";
 import { getAssessmentRuns, listApplications, runApplicationAssessment } from "./applications.api.ts";
 import styles from "./ApplicationWorkbench.module.css";
 import { usePreferences } from "../../lib/preferences.tsx";
@@ -58,16 +58,7 @@ export function ApplicationWorkbench() {
       width: "18%",
       render: (a) => (
         <Badge dot tone={stageLabels[a.stage].tone}>
-          {locale === "ar"
-            ? (
-                {
-                  assessment_in_progress: "قيد التقييم",
-                  decision_required: "بانتظار القرار",
-                  referred: "محال للمراجعة",
-                  completed: "مكتمل",
-                } as Record<string, string>
-              )[a.stage]
-            : stageLabels[a.stage].label}
+          {locale === "ar" ? arabicStageLabels[a.stage] : stageLabels[a.stage].label}
         </Badge>
       ),
     },
@@ -141,7 +132,7 @@ function CaseWorkspace({ application }: { application: CreditApplication }) {
           </p>
         </div>
         <Badge dot tone={stageLabels[application.stage].tone}>
-          {locale === "ar" ? "بانتظار القرار" : stageLabels[application.stage].label}
+          {locale === "ar" ? arabicStageLabels[application.stage] : stageLabels[application.stage].label}
         </Badge>
       </header>
       <dl className={styles.facts}>

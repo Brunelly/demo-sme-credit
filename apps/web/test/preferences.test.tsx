@@ -17,6 +17,37 @@ describe("language and theme preferences", () => {
     expect(localStorage.getItem("rasikh-locale")).toBe("ar");
   });
 
+  it("shows an Arabic badge for every application stage", async () => {
+    const stages = [
+      ["new", "جديد"],
+      ["eligibility_review", "مراجعة الأهلية"],
+      ["credit_assessment", "التقييم الائتماني"],
+      ["decision_required", "بانتظار القرار"],
+      ["referred", "محال للمراجعة"],
+    ] as const;
+    mockApi({
+      "GET /api/applications": () => ({
+        sampleData: true,
+        items: stages.map(([stage], index) => ({
+          id: `app-${index}`,
+          businessName: `Sample business ${index + 1}`,
+          businessNameArabic: `منشأة تجريبية ${index + 1}`,
+          commercialRegistration: `101084276${index}`,
+          product: "working_capital",
+          amountSar: 1_000_000,
+          stage,
+          receivedAt: "2026-11-04T08:20:00.000Z",
+          city: "Riyadh",
+        })),
+      }),
+      "GET /api/applications/app-0/assessment-runs": () => ({ items: [], simulatedData: true }),
+    });
+    renderAt("/");
+    await userEvent.click(await screen.findByRole("button", { name: "Switch to Arabic" }));
+
+    for (const [, label] of stages) expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+  });
+
   it("switches to the analyst dark theme and persists the choice", async () => {
     mockApi({ "GET /api/applications": () => ({ sampleData: false, items: [] }) });
     renderAt("/");
