@@ -2,7 +2,7 @@
 .queueBar { min-height: var(--control-height-md); display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-3); border: var(--border-width) solid var(--color-border); background: var(--color-surface-muted); font-size: var(--text-sm); }
 .queueBar span { color: var(--color-text-muted); }
 .workbench { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(390px, .9fr); min-height: 680px; border: var(--border-width) solid var(--color-border); background: var(--color-surface); }
-.list { min-width: 0; border-right: var(--border-width) solid var(--color-border); }
+.list { min-width: 0; border-inline-end: var(--border-width) solid var(--color-border); }
 .detail { min-width: 0; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
 .caseHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); border-bottom: var(--border-width) solid var(--color-border); padding-bottom: var(--space-3); }
 .caseHeader h2, .detail h3 { margin: 0; color: var(--color-text); }
@@ -11,7 +11,7 @@
 .caseHeader p { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
 .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; border: var(--border-width) solid var(--color-border); }
 .facts div { padding: var(--space-2) var(--space-3); border-bottom: var(--border-width) solid var(--color-border); }
-.facts div:nth-child(odd) { border-right: var(--border-width) solid var(--color-border); }
+.facts div:nth-child(odd) { border-inline-end: var(--border-width) solid var(--color-border); }
 .facts div:nth-last-child(-n+2) { border-bottom: 0; }
 .facts dt { color: var(--color-text-muted); font-size: var(--text-xs); }
 .facts dd { margin: var(--space-1) 0 0; font-size: var(--text-sm); font-weight: var(--weight-semibold); font-variant-numeric: tabular-nums; }
@@ -34,5 +34,5 @@
 .actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .overrideFields { display: grid; grid-template-columns: minmax(120px, .45fr) minmax(0, 1fr); gap: var(--space-3); }
 .number { font-variant-numeric: tabular-nums; white-space: nowrap; }
-@media (max-width: 900px) { .workbench { grid-template-columns: 1fr; } .list { border-right: 0; border-bottom: var(--border-width) solid var(--color-border); } }
-@media (max-width: 560px) { .queueBar, .caseHeader { align-items: flex-start; flex-direction: column; padding-block: var(--space-2); } .detail { padding: var(--space-3); } .facts, .overrideFields { grid-template-columns: 1fr; } .facts div, .facts div:nth-child(odd) { border-right: 0; border-bottom: var(--border-width) solid var(--color-border); } .facts div:last-child { border-bottom: 0; } .actions > * { flex: 1 1 calc(50% - var(--space-2)); } }
+@media (max-width: 900px) { .workbench { grid-template-columns: 1fr; } .list { border-inline-end: 0; border-bottom: var(--border-width) solid var(--color-border); } }
+@media (max-width: 560px) { .queueBar, .caseHeader { align-items: flex-start; flex-direction: column; padding-block: var(--space-2); } .detail { padding: var(--space-3); } .facts, .overrideFields { grid-template-columns: 1fr; } .facts div, .facts div:nth-child(odd) { border-inline-end: 0; border-bottom: var(--border-width) solid var(--color-border); } .facts div:last-child { border-bottom: 0; } .actions > * { flex: 1 1 calc(50% - var(--space-2)); } }
