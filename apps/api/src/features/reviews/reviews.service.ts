@@ -3,7 +3,7 @@ import type { DecisionRecord } from "@app/contracts";
 import { ConflictError, NotFoundError, ValidationError } from "../../errors.ts";
 import type { ReviewsRepository } from "./reviews.repository.ts";
 
-type Input = { analystName: string; decision: "approve" | "refer" | "decline" | "override"; notes: string; overrideOutcome?: "Approve" | "Refer" | "Decline"; overrideReason?: DecisionRecord["overrideReason"] };
+type Input = { analystId: string; analystName: string; expectedSequence: 1 | 2; decision: "approve" | "refer" | "decline" | "override"; notes: string; overrideOutcome?: "Approve" | "Refer" | "Decline"; overrideReason?: DecisionRecord["overrideReason"] };
 
 export class ReviewsService {
   private readonly repository: ReviewsRepository;
@@ -15,17 +15,21 @@ export class ReviewsService {
     const item = queue.items.find((entry) => entry.application.id === applicationId);
     if (!item) throw new NotFoundError("The application is not awaiting an analyst decision.");
     const prior = item.decisions.at(-1);
+    const currentSequence = prior?.status === "awaiting_second_analyst" ? 2 : 1;
+    if (input.expectedSequence !== currentSequence) throw new ConflictError("The decision ledger changed. Refresh the review queue before continuing.");
     const effectiveOutcome = input.decision === "override" ? input.overrideOutcome! : ({ approve: "Approve", refer: "Refer", decline: "Decline" } as const)[input.decision];
     if (input.decision === "override" && (!input.overrideOutcome || !input.overrideReason)) throw new ValidationError("An override outcome and Appendix A reason are required.");
-    if (input.decision !== "override" && effectiveOutcome !== item.recommendation.outcome) throw new ValidationError("A decision that differs from the AI recommendation must be recorded as an override with an Appendix A reason.");
     if (prior?.status === "awaiting_second_analyst") {
-      if (effectiveOutcome !== "Decline") throw new ConflictError("The second analyst must confirm or reject the pending decline through a new decision.");
-      if (prior.analystName.toLocaleLowerCase() === input.analystName.toLocaleLowerCase()) throw new ConflictError("A different analyst must confirm the decline under the four-eyes rule.");
+      if (prior.analystId === input.analystId) throw new ConflictError("A different authenticated analyst must confirm or reject the decline under the four-eyes rule.");
+      const rejectsOverrideDecline = prior.decision === "override" && prior.effectiveOutcome === "Decline" && effectiveOutcome === item.recommendation.outcome;
+      if (effectiveOutcome !== "Decline" && !rejectsOverrideDecline) throw new ConflictError("Confirm the pending decline, or reject it by retaining the original recommendation.");
+    } else if (input.decision !== "override" && effectiveOutcome !== item.recommendation.outcome) {
+      throw new ValidationError("A decision that differs from the AI recommendation must be recorded as an override with an Appendix A reason.");
     }
     const isDecline = effectiveOutcome === "Decline";
-    const sequence = prior?.status === "awaiting_second_analyst" ? 2 as const : 1 as const;
+    const sequence = input.expectedSequence;
     const decision: DecisionRecord = {
-      id: randomUUID(), applicationId, analystName: input.analystName, decision: input.decision,
+      id: randomUUID(), applicationId, analystId: input.analystId, analystName: input.analystName, decision: input.decision,
       effectiveOutcome, notes: input.notes, ...(input.overrideReason ? { overrideReason: input.overrideReason } : {}),
       recordedAt: new Date().toISOString(), sequence,
       status: isDecline && sequence === 1 ? "awaiting_second_analyst" : "final",

@@ -1,11 +1,14 @@
 import type { CreditApplication, CreditRecommendation, DecisionRecord, ReviewQueueItem } from "@app/contracts";
 import type { Db, IndexDescription } from "mongodb";
+import { MongoServerError } from "mongodb";
+import { ConflictError } from "../../errors.ts";
 
 export const DECISIONS_COLLECTION = "creditDecisions";
 export const decisionIndexes: IndexDescription[] = [
   { key: { applicationId: 1, recordedAt: 1, _id: 1 }, name: "decisions_application_history" },
+  { key: { applicationId: 1, ledgerSlot: 1 }, name: "decisions_one_per_sequence", unique: true, partialFilterExpression: { ledgerSlot: { $exists: true } } },
 ];
-interface DecisionDocument extends Omit<DecisionRecord, "id"> { _id: string }
+interface DecisionDocument extends Omit<DecisionRecord, "id"> { _id: string; ledgerSlot?: number }
 interface ApplicationDocument extends Omit<CreditApplication, "id" | "receivedAt"> { _id: string; receivedAt: Date; sampleData: boolean }
 interface RunDocument { _id: string; applicationId: string; status: string; startedAt?: string; finalRecommendation?: CreditRecommendation; recommendation?: CreditRecommendation }
 
@@ -31,11 +34,18 @@ export class ReviewsRepository {
 
   async listDecisions(applicationId: string): Promise<DecisionRecord[]> {
     const rows = await this.db.collection<DecisionDocument>(DECISIONS_COLLECTION).find({ applicationId }).sort({ recordedAt: 1, _id: 1 }).limit(20).toArray();
-    return rows.map(({ _id, ...row }) => ({ id: _id, ...row }));
+    return rows.map(({ _id, ledgerSlot: _ledgerSlot, ...row }) => ({ id: _id, ...row }));
   }
 
   async insert(decision: DecisionRecord): Promise<void> {
     const { id, ...document } = decision;
-    await this.db.collection<DecisionDocument>(DECISIONS_COLLECTION).insertOne({ _id: id, ...document });
+    try {
+      await this.db.collection<DecisionDocument>(DECISIONS_COLLECTION).insertOne({ _id: id, ...document, ledgerSlot: decision.sequence });
+    } catch (error) {
+      if (error instanceof MongoServerError && error.code === 11000) {
+        throw new ConflictError("Another analyst recorded this decision first. Refresh the review queue before continuing.");
+      }
+      throw error;
+    }
   }
 }
