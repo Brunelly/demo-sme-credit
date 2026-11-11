@@ -42,6 +42,12 @@ export class ApplicationChecksRepository {
       { $set: { status: "failed", failureReason: reason, completedAt: at, "steps.$.status": "failed", "steps.$.completedAt": at, "steps.$.failureReason": reason }, $unset: { lease: "" } },
     );
   }
+  async interruptAfterLeaseLoss(runId: string, held: { "lease.owner": string }, reason: string, at: string): Promise<void> {
+    await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).updateOne(
+      { _id: runId, status: "running", "lease.owner": { $ne: held["lease.owner"] } },
+      { $set: { status: "interrupted", interruptedReason: reason, completedAt: at }, $unset: { lease: "" } },
+    );
+  }
   async list(applicationId: string): Promise<ApplicationCheckRun[]> {
     const rows = await this.db.collection<RunDocument | LegacyRunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).find({ applicationId, legacy: { $ne: true } }).sort({ startedAt: -1, _id: -1 }).limit(50).toArray();
     return rows.map((row) => this.toContract(row));

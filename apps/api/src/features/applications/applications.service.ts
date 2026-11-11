@@ -96,8 +96,17 @@ export class ApplicationsService {
       const recommendation: CreditRecommendation = { ...parseAi(recommendationResultSchema, finalRun.output, "The final recommendation assistant"), createdAt: new Date().toISOString() };
       const validIds = new Set(corrected.map((item) => item.id));
       if (!validateRecommendationCitations(recommendation) || recommendation.reasons.some((reason) => reason.findingIds.some((id) => !validIds.has(id))) || !validateRecommendationAgainstFindings(recommendation, corrected)) throw new ValidationError("The AI recommendation did not contain valid policy and evidence citations.");
-      await this.requireHeld(await this.checks.updateStep(runId, held, "final", "completed", recommendation.createdAt, finalRun.runId)); await this.checks.complete(runId, held, recommendation, recommendation.createdAt);
-    } catch (error) { const reason = `${activeStep.label} failed: ${safeStageFailure(error)}`; await this.checks.fail(runId, held, activeStep.key, reason, new Date().toISOString()); }
+      await this.requireHeld(await this.checks.updateStep(runId, held, "final", "completed", recommendation.createdAt, finalRun.runId));
+      await this.requireHeld(await this.checks.complete(runId, held, recommendation, recommendation.createdAt));
+    } catch (error) {
+      const at = new Date().toISOString();
+      const reason = `${activeStep.label} failed: ${safeStageFailure(error)}`;
+      if (error instanceof ConflictError) {
+        await this.checks.interruptAfterLeaseLoss(runId, held, "Assessment ownership changed before this stage could be saved. Start a new assessment.", at);
+      } else {
+        await this.checks.fail(runId, held, activeStep.key, reason, at);
+      }
+    }
   }
   async recordOverride(applicationId: string, runId: string, input: { outcome: RecommendationOutcome; reason: OverrideReason; rationale: string }) { await this.requireApplication(applicationId); const updated = await this.checks.recordOverride(applicationId, runId, { ...input, recordedAt: new Date().toISOString(), recordedBy: "Credit analyst" }); if (!updated) throw new NotFoundError("The completed assessment run was not found."); return updated; }
   private async requireApplication(id: string) { const item = await this.repository.find(id); if (!item) throw new NotFoundError("The financing application was not found."); return item; }

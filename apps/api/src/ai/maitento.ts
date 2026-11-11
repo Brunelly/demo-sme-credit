@@ -24,7 +24,7 @@ export const AI_NOT_CONNECTED =
   "AI not connected. Set MAITENTO_API_KEY and MAITENTO_NAMESPACE to switch on the app's AI features.";
 
 /** How long a request waits for a run before giving up on it (and stopping it). */
-const RUN_TIMEOUT_MS = 90_000;
+export const RUN_TIMEOUT_MS = 120_000;
 
 export function createAiRunner(settings: Config["maitento"]): AiRunner | null {
   const { apiKey, namespace, baseUrl } = settings;
