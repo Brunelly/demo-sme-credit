@@ -1,11 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "additionalProperties": false,
+  "type": "object", "additionalProperties": false,
   "properties": {
-    "outcome": { "type": "string", "enum": ["pass", "refer"] },
-    "summary": { "type": "string" },
-    "evidence": { "type": "array", "items": { "type": "string" } }
+    "outcome": { "type": "string", "enum": ["pass", "refer", "human_review"] },
+    "plainLanguageFinding": { "type": "string" },
+    "sourceLabel": { "type": "string" },
+    "evidence": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "properties": {
+      "fact": { "type": "string" }, "sourceReference": { "type": "string" }
+    }, "required": ["fact", "sourceReference"] } },
+    "policyCitations": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "revisionSummary": { "type": ["string", "null"] }
   },
-  "required": ["outcome", "summary", "evidence"]
+  "required": ["outcome", "plainLanguageFinding", "sourceLabel", "evidence", "policyCitations", "revisionSummary"]
 }

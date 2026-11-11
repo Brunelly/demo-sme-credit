@@ -1,0 +1,3 @@
+model = @ref("deepseek.deepseek-v4-pro")
+prompt = @prompt("credit-assessment-reviewer")
+summary = "Challenges unsupported SME specialist findings once, or marks missing evidence for human review"

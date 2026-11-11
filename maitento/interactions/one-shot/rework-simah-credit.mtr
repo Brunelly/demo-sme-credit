@@ -1,0 +1,8 @@
+agent = { name = "SIMAH credit bureau specialist" agent = @ref("simah-credit-specialist") }
+task = @prompt("rework-specialist-finding")
+inputs.prompts = [
+  { name = "challenge" description = "The targeted reviewer challenge as JSON" required = true },
+  { name = "findingAndSource" description = "The first finding and its original assigned simulated source as JSON" required = true }
+]
+schema.solution = @json("specialist-check-result")
+duration.max = "00:02:00"

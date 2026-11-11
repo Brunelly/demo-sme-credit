@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "properties": {
+    "status": { "type": "string", "enum": ["accepted", "challenge", "human_review"] },
+    "conclusion": { "type": "string" },
+    "evidenceGap": { "type": ["string", "null"] },
+    "reasoningDefect": { "type": ["string", "null"] },
+    "policyCitation": { "type": ["string", "null"] }
+  },
+  "required": ["status", "conclusion", "evidenceGap", "reasoningDefect", "policyCitation"]
+}

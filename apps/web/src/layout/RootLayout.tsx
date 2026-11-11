@@ -8,11 +8,7 @@ export function RootLayout() {
     <AppShell
       brand={brand}
       nav={
-        import.meta.env.DEV ? (
-          <NavLink to="/kit" className={topBarLinkClass}>
-            UI kit
-          </NavLink>
-        ) : undefined
+        <><NavLink to="/" end className={topBarLinkClass}>Applications</NavLink><NavLink to="/settings" className={topBarLinkClass}>Settings</NavLink>{import.meta.env.DEV && <NavLink to="/kit" className={topBarLinkClass}>UI kit</NavLink>}</>
       }
     >
       <Outlet />

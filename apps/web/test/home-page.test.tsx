@@ -1,69 +1,42 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { mockApi, renderAt } from "./helpers.tsx";
-
-const applications = {
-  sampleData: true,
-  items: [
-    { id: "app-1", businessName: "Al Nakhil Packaging", businessNameArabic: "تغليف النخيل", commercialRegistration: "1010842763", product: "working_capital", amountSar: 1850000, stage: "decision_required", receivedAt: "2026-11-04T08:20:00.000Z", city: "Riyadh", riskGrade: "B" },
-    { id: "app-2", businessName: "Rawafid Industrial Supplies", businessNameArabic: "روافد للتوريدات الصناعية", commercialRegistration: "1010763428", product: "invoice_financing", amountSar: 3200000, stage: "referred", receivedAt: "2026-11-05T10:45:00.000Z", city: "Riyadh", riskGrade: "C" },
-  ],
-};
-
+import { mockApi, renderAt, status } from "./helpers.tsx";
+const applications = { sampleData: true, items: [
+  { id: "app-1", businessName: "Al Nakhil Packaging", businessNameArabic: "تغليف النخيل", commercialRegistration: "1010842763", product: "working_capital", amountSar: 1850000, stage: "decision_required", receivedAt: "2026-11-04T08:20:00.000Z", city: "Riyadh", riskGrade: "B" },
+  { id: "app-2", businessName: "Rawafid Industrial Supplies", businessNameArabic: "روافد للتوريدات الصناعية", commercialRegistration: "1010763428", product: "invoice_financing", amountSar: 3200000, stage: "referred", receivedAt: "2026-11-05T10:45:00.000Z", city: "Riyadh", riskGrade: "C" },
+] };
+const at = "2026-11-11T09:00:00.000Z";
+const finding = { id: "f-1", specialistType: "SIMAH credit bureau", round: 1, outcome: "refer", plainLanguageFinding: "The commercial score is High risk and requires referral.", sourceLabel: "Simulated SIMAH reports", evidence: [{ fact: "Commercial score 528", sourceReference: "Commercial report · score" }], policyCitations: ["SME-CP-07 §3.1"], createdAt: at, revisionSummary: null };
+const run = { id: "run-1", applicationId: "app-1", scenarioId: "low_bureau", scenarioVersion: 3, status: "completed", startedAt: at, completedAt: at, createdBy: "Credit analyst", failureReason: null, specialistFindings: [finding], reviewerChallenges: [{ id: "r-1", findingId: "f-1", specialistType: "SIMAH credit bureau", status: "challenge", conclusion: "Policy consequence needs to be explicit.", evidenceGap: "State the score band.", reasoningDefect: "Incomplete consequence.", policyCitation: "SME-CP-07 §6", createdAt: at }], revisedFindings: [{ ...finding, id: "f-2", round: 2, plainLanguageFinding: "Score 528 is High risk and requires grade D committee referral.", policyCitations: ["SME-CP-07 §3.1", "SME-CP-07 §6"], revisionSummary: "Added the policy consequence." }], finalRecommendation: { outcome: "Refer", riskGrade: "D", indicativeProfitRate: "Credit committee only", decisionAuthority: "Credit committee", authorityClause: "SME-CP-07 §7.1", notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1.", createdAt: at, reasons: [{ clause: "SME-CP-07 §6", conclusion: "High risk requires committee review.", evidence: "Corrected SIMAH finding records score 528.", findingIds: ["f-2"] }] } };
 describe("SME Credit Desk", () => {
-  it("shows the dense application queue and opens the first case alongside it", async () => {
-    mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/checks": () => ({ latest: null, simulatedData: true }) });
-    renderAt("/");
-
+  it("shows the queue and full chronological assessment trail without a case scenario control", async () => {
+    mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/assessment-runs": () => ({ items: [run], simulatedData: true }) }); renderAt("/");
     expect(await screen.findByRole("heading", { level: 1, name: "Application queue" })).toBeInTheDocument();
-    expect(screen.getByRole("banner")).toHaveTextContent("SME Credit Desk");
-    expect(screen.getByRole("columnheader", { name: "Amount (SAR)" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { level: 2, name: "Al Nakhil Packaging" })).toBeInTheDocument();
-    expect(screen.getByText("Sample data")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "AI recommendation" })).toBeInTheDocument();
+    expect(screen.getByText("First pass · SIMAH credit bureau")).toBeInTheDocument();
+    expect(screen.getByText("Challenge recorded", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("Reworked finding · SIMAH credit bureau")).toBeInTheDocument();
+    expect(screen.getByText("Added the policy consequence.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Assessment scenario")).not.toBeInTheDocument();
   });
-
-  it("selects another queue row and updates the case workspace", async () => {
-    mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/checks": () => ({ latest: null, simulatedData: true }), "GET /api/applications/app-2/checks": () => ({ latest: null, simulatedData: true }) });
-    renderAt("/");
-
-    await userEvent.click(await screen.findByText("Rawafid Industrial Supplies"));
-    const workspace = screen.getByRole("complementary", { name: "Selected application workspace" });
-    expect(workspace).toHaveTextContent("Rawafid Industrial Supplies");
-    expect(workspace).toHaveTextContent("Assessment scenario");
-  });
-
-  it("runs the four specialists and shows clause-labelled outcomes", async () => {
-    const run = { id: "run-1", applicationId: "app-1", scenario: "low_bureau", performedAt: "2026-11-11T09:00:00.000Z", recommendation: { outcome: "Refer", riskGrade: "D", indicativeProfitRate: "Credit committee only", decisionAuthority: "Credit committee", authorityClause: "SME-CP-07 §7.1", reasons: [{ clause: "SME-CP-07 §§3.1, 6", conclusion: "High bureau risk creates a grade D exception.", evidence: "SIMAH score is 528." }], reviewerChallenges: [{ specialist: "SIMAH credit bureau", status: "challenge", conclusion: "Reviewer challenges the specialist conclusion.", evidenceGap: "A policy exception cannot be cleared at analyst level." }] }, results: [
-      { specialist: "SIMAH credit bureau", clause: "SME-CP-07 §3.1", outcome: "refer", summary: "High risk bureau band requires analyst review.", evidence: ["Commercial score 528 · High risk"] },
-      { specialist: "Wathq company verification", clause: "SME-CP-07 §3.2", outcome: "pass", summary: "CR verified.", evidence: ["CR active"] },
-      { specialist: "ZATCA e-invoice verification", clause: "SME-CP-07 §3.3", outcome: "pass", summary: "Not required.", evidence: ["Working capital"] },
-      { specialist: "Open banking cash flow", clause: "SME-CP-07 §3.4", outcome: "pass", summary: "Cash flow supports facility.", evidence: ["12 months analysed"] },
-    ] };
-    let latest: unknown = null;
-    const api = mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/checks": () => ({ latest, simulatedData: true }), "POST /api/applications/app-1/checks": () => { latest = run; return run; } });
-    renderAt("/");
+  it("runs an assessment, refreshes history, and exposes a safe failure", async () => {
+    let items: unknown[] = []; const api = mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/assessment-runs": () => ({ items, simulatedData: true }), "POST /api/applications/app-1/assessment-runs": () => { items = [run]; return run; } }); renderAt("/");
     await userEvent.click(await screen.findByRole("button", { name: "Run assessment" }));
-    expect(await screen.findByText("High risk bureau band requires analyst review.")).toBeInTheDocument();
-    expect(screen.getByText("SME-CP-07 §3.1")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Recommendation" })).toBeInTheDocument();
-    expect(screen.getByText("Credit committee")).toBeInTheDocument();
-    expect(screen.getByText("A policy exception cannot be cleared at analyst level.")).toBeInTheDocument();
-    expect(api.calls).toContainEqual({ method: "POST", path: "/api/applications/app-1/checks", search: "", body: { scenario: "clean" } });
+    expect(await screen.findByText("The commercial score is High risk and requires referral.")).toBeInTheDocument();
+    expect(api.calls).toContainEqual({ method: "POST", path: "/api/applications/app-1/assessment-runs", search: "", body: {} });
   });
-
-  it("explains a page that doesn't exist and goes back home", async () => {
-    mockApi({ "GET /api/applications": () => applications });
-    const { router } = renderAt("/nowhere");
-
-    expect(await screen.findByText("This page doesn't exist")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Go to the home page" }));
-    expect(router.state.location.pathname).toBe("/");
+  it("shows assessment request failures without internal details", async () => {
+    mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/assessment-runs": () => ({ items: [], simulatedData: true }), "POST /api/applications/app-1/assessment-runs": () => status(503, { error: { code: "dependency_unavailable", message: "Assessment service is temporarily unavailable." } }) }); renderAt("/");
+    await userEvent.click(await screen.findByRole("button", { name: "Run assessment" }));
+    expect(await screen.findByText("Assessment service is temporarily unavailable.")).toBeInTheDocument();
   });
-
-  it("shows the UI kit in development", async () => {
-    mockApi({});
-    renderAt("/kit");
-    expect(await screen.findByRole("heading", { level: 1, name: "UI kit" })).toBeInTheDocument();
+  it("updates the global simulated scenario only in Settings", async () => {
+    let setting = { activeScenarioId: "clean", version: 2, updatedAt: at, updatedBy: "Credit analyst" }; const api = mockApi({ "GET /api/settings/simulated-scenario": () => setting, "PUT /api/settings/simulated-scenario": body => { setting = { ...setting, ...(body as object), version: 3 }; return setting; } }); renderAt("/settings");
+    expect(await screen.findByRole("heading", { name: "Control-centre settings" })).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Active scenario"), "returned_cheques");
+    await userEvent.click(screen.getByRole("button", { name: "Save scenario" }));
+    expect(await screen.findByText("New assessments will use this scenario.")).toBeInTheDocument();
+    expect(api.calls).toContainEqual({ method: "PUT", path: "/api/settings/simulated-scenario", search: "", body: { activeScenarioId: "returned_cheques" } });
   });
 });

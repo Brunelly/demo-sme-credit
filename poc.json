@@ -19,7 +19,8 @@
   "ui": {
     "viewports": ["desktop", "phone"],
     "routes": [
-      { "path": "/", "name": "Home" }
+      { "path": "/", "name": "Applications" },
+      { "path": "/settings", "name": "Settings" }
     ]
   },
   "components": [

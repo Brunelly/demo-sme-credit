@@ -1,130 +1,68 @@
 import { randomUUID } from "node:crypto";
-import type { ApplicationCheckRun, ApplicationChecksResponse, CreditApplication, CreditRecommendation, ListApplicationsResponse, OverrideReason, RecommendationOutcome, SimulatedScenario, SpecialistCheckResult } from "@app/contracts";
-import { NotFoundError } from "../../errors.ts";
+import type { ApplicationCheckRun, CreditApplication, CreditRecommendation, OverrideReason, RecommendationOutcome, SimulatedScenario, SpecialistFinding, SpecialistType } from "@app/contracts";
+import { NotFoundError, ValidationError } from "../../errors.ts";
 import type { ApplicationChecksRepository } from "./application-checks.repository.ts";
 import type { ApplicationsRepository } from "./applications.repository.ts";
+import type { SimulatedScenarioRepository } from "./simulated-scenario.repository.ts";
+
+const SPECIALISTS: SpecialistType[] = ["SIMAH credit bureau", "Wathq company verification", "ZATCA e-invoice verification", "Open banking cash flow"];
+const ALLOWED_RECOMMENDATION_CITATION = /^SME-CP-07 §(?:§)?(?:2(?:\.[1-5])?|4(?:\.[1-5])?|5(?:\.[1-4])?|6)(?:[–, ]+\d(?:\.\d+)?)?$/;
+export function validateRecommendationCitations(recommendation: CreditRecommendation): boolean {
+  return recommendation.reasons.length > 0 && recommendation.reasons.every((reason) => ALLOWED_RECOMMENDATION_CITATION.test(reason.clause) && reason.findingIds.length > 0);
+}
+export function buildSpecialistPromptPayload(application: CreditApplication, scenario: SimulatedScenario, specialist: SpecialistType): Record<string, string> {
+  return { sourceData: JSON.stringify({ applicationId: application.id, product: application.product, scenario, assignedSource: specialist, simulated: true }) };
+}
 
 export class ApplicationsService {
-  private readonly repository: ApplicationsRepository;
-  private readonly checks: ApplicationChecksRepository;
-  private readonly scenario: SimulatedScenario;
-
-  constructor(repository: ApplicationsRepository, checks: ApplicationChecksRepository, scenario: SimulatedScenario) {
-    this.repository = repository;
-    this.checks = checks;
-    this.scenario = scenario;
+  private readonly repository: ApplicationsRepository; private readonly checks: ApplicationChecksRepository; private readonly scenarios: SimulatedScenarioRepository;
+  constructor(repository: ApplicationsRepository, checks: ApplicationChecksRepository, scenarios: SimulatedScenarioRepository) { this.repository = repository; this.checks = checks; this.scenarios = scenarios; }
+  list() { return this.repository.list(); }
+  async latestChecks(applicationId: string) { await this.requireApplication(applicationId); return { latest: await this.checks.latest(applicationId), simulatedData: true as const }; }
+  async listRuns(applicationId: string) { await this.requireApplication(applicationId); return { items: await this.checks.list(applicationId), simulatedData: true as const }; }
+  async getRun(applicationId: string, runId: string) { await this.requireApplication(applicationId); const run = await this.checks.find(applicationId, runId); if (!run) throw new NotFoundError("The assessment run was not found."); return run; }
+  async runChecks(applicationId: string): Promise<ApplicationCheckRun> {
+    const application = await this.requireApplication(applicationId); const setting = await this.scenarios.get(); const now = new Date().toISOString();
+    const originals = createFindings(application, setting.activeScenarioId, now);
+    const challenges = originals.map((finding) => createReview(finding, setting.activeScenarioId, now));
+    const revised = challenges.filter((item) => item.status === "challenge").map((challenge) => reviseFinding(originals.find((item) => item.id === challenge.findingId)!, challenge, now));
+    const recommendation = formRecommendation(application, setting.activeScenarioId, originals, revised, now);
+    if (!validateRecommendationCitations(recommendation)) throw new ValidationError("The AI recommendation did not contain valid policy and evidence citations.");
+    return this.checks.record({ id: randomUUID(), applicationId, scenarioId: setting.activeScenarioId, scenarioVersion: setting.version, status: "completed", startedAt: now, completedAt: now, specialistFindings: originals, reviewerChallenges: challenges, revisedFindings: revised, finalRecommendation: recommendation, failureReason: null, createdBy: "Credit analyst" });
   }
-
-  /** Returns the analyst queue ordered oldest first. */
-  list(): Promise<ListApplicationsResponse> {
-    return this.repository.list();
+  async recordOverride(applicationId: string, runId: string, input: { outcome: RecommendationOutcome; reason: OverrideReason; rationale: string }) {
+    await this.requireApplication(applicationId); const updated = await this.checks.recordOverride(applicationId, runId, { ...input, recordedAt: new Date().toISOString(), recordedBy: "Credit analyst" });
+    if (!updated) throw new NotFoundError("The completed assessment run was not found."); return updated;
   }
-
-
-  async latestChecks(applicationId: string): Promise<ApplicationChecksResponse> {
-    await this.requireApplication(applicationId);
-    return { latest: await this.checks.latest(applicationId), simulatedData: true };
-  }
-
-  /** Runs and records the four policy specialists against the configured simulated source data. */
-  async runChecks(applicationId: string, request: { scenario?: SimulatedScenario } = {}): Promise<ApplicationCheckRun> {
-    const application = await this.requireApplication(applicationId);
-    const scenario = request.scenario ?? this.scenario;
-    const results = specialistResults(application, scenario);
-    return this.checks.record({ id: randomUUID(), applicationId, scenario, performedAt: new Date(), results, recommendation: formRecommendation(application, scenario, results) });
-  }
-
-  /** Records the analyst's human override on the assessment run. */
-  async recordOverride(applicationId: string, runId: string, input: { outcome: RecommendationOutcome; reason: OverrideReason; rationale: string }): Promise<ApplicationCheckRun> {
-    await this.requireApplication(applicationId);
-    const updated = await this.checks.recordOverride(applicationId, runId, {
-      outcome: input.outcome,
-      reason: input.reason,
-      rationale: input.rationale,
-      recordedAt: new Date().toISOString(),
-      recordedBy: "Credit analyst",
-    });
-    if (!updated) throw new NotFoundError("The assessment run was not found.");
-    return updated;
-  }
-
-  private async requireApplication(id: string): Promise<CreditApplication> {
-    const application = await this.repository.find(id);
-    if (!application) throw new NotFoundError("The financing application was not found.");
-    return application;
-  }
+  private async requireApplication(id: string) { const item = await this.repository.find(id); if (!item) throw new NotFoundError("The financing application was not found."); return item; }
 }
 
-function specialistResults(application: CreditApplication, scenario: SimulatedScenario): SpecialistCheckResult[] {
-  const invoice = application.invoice;
-  const bureauRefer = scenario === "low_bureau";
-  const invoiceRefer = scenario === "disputed_invoice" && application.product === "invoice_financing";
-  const cashRefer = scenario === "returned_cheques";
+function finding(specialistType: SpecialistType, outcome: SpecialistFinding["outcome"], plainLanguageFinding: string, sourceLabel: string, facts: string[], policyCitations: string[], createdAt: string): SpecialistFinding {
+  return { id: randomUUID(), specialistType, round: 1, outcome, plainLanguageFinding, sourceLabel, evidence: facts.map((fact, index) => ({ fact, sourceReference: `${sourceLabel} · item ${index + 1}` })), policyCitations, createdAt, revisionSummary: null };
+}
+function createFindings(app: CreditApplication, scenario: SimulatedScenario, at: string): SpecialistFinding[] {
+  const invoice = app.invoice; const invoiceIssue = scenario === "disputed_invoice" && app.product === "invoice_financing"; const low = scenario === "low_bureau"; const cheques = scenario === "returned_cheques";
   return [
-    { specialist: "SIMAH credit bureau", clause: "SME-CP-07 §3.1", outcome: bureauRefer ? "refer" : "pass", summary: bureauRefer ? "High risk bureau band requires analyst review." : "Commercial and qualifying owner reports are within policy.", evidence: bureauRefer ? ["Commercial score 528 · High risk", "Owner reports checked"] : ["Commercial score 714 · Low risk", "Owner reports checked"] },
-    { specialist: "Wathq company verification", clause: "SME-CP-07 §3.2", outcome: "pass", summary: "CR tenure, activity and authorised signatory match the application.", evidence: ["CR active for 38 months", "Registered activity matches finance purpose", "Signatory authorised"] },
-    { specialist: "ZATCA e-invoice verification", clause: "SME-CP-07 §3.3", outcome: invoiceRefer ? "refer" : "pass", summary: invoiceRefer ? "Invoice is disputed and cannot be treated as eligible evidence." : invoice ? "Clearance record matches the submitted invoice." : "No invoice check is required for this working-capital application.", evidence: invoiceRefer ? [`${invoice?.number ?? "Submitted invoice"} · buyer dispute recorded`, "No duplicate pledge found"] : invoice ? [`${invoice.number} · cleared`, `${invoice.buyerCategory} buyer · ${invoice.buyerName}`, "Number, VAT, amount and date match"] : ["Not applicable · working capital"] },
-    { specialist: "Open banking cash flow", clause: "SME-CP-07 §3.4", outcome: cashRefer ? "refer" : "pass", summary: cashRefer ? "Returned cheque activity exceeds the policy referral threshold." : "Twelve months of statement activity supports the requested facility.", evidence: cashRefer ? ["12 months analysed", "5 returned cheques", "Existing obligations included"] : ["12 months analysed", "Average monthly inflow SAR 2,480,000", "1 returned cheque · existing obligations included"] },
+    finding("SIMAH credit bureau", low ? "refer" : "pass", low ? "The commercial score is in the High band. Although the qualifying owner reports were checked, the score does not support an unqualified approval." : "The commercial score is Low risk and the required personal reports for every owner holding 25% or more show no recent default.", "Simulated SIMAH commercial and owner reports", [low ? "Commercial score 528 (High risk)" : "Commercial score 714 (Low risk)", "Owner reports: all owners holding 25% or more checked", "No default, write-off or restructure in the last 24 months"], ["SME-CP-07 §3.1"], at),
+    finding("Wathq company verification", "pass", "The active CR has sufficient tenure, the registered activity supports the finance purpose, and the submitted signatory is authorised.", "Simulated Wathq CR record", ["CR active for 38 months", "Registered activity matches finance purpose", "Signatory is authorised"], ["SME-CP-07 §3.2", "SME-CP-07 §2.1"], at),
+    finding("ZATCA e-invoice verification", invoiceIssue ? "refer" : "pass", app.product === "working_capital" ? "Invoice and buyer-quality checks are not applicable to this working-capital application." : invoiceIssue ? "The clearance record matches the invoice fields, but the buyer dispute means the invoice cannot be treated as eligible without human review." : "The cleared e-invoice matches the submitted number, buyer VAT number, amount and date, and has no prior-financing indication. Buyer quality is supported for invoice financing.", "Simulated ZATCA clearance record", app.product === "working_capital" ? ["Not applicable: working-capital product"] : [`Invoice ${invoice?.number}; buyer VAT 310123456700003`, `Amount SAR ${invoice?.amountSar.toLocaleString("en-SA")}; issued 27 Oct 2026; clearance status Cleared`, invoiceIssue ? "Buyer dispute recorded; no prior-financing indication" : "Fields match; no duplicate, pledge or prior financing", `Buyer category: ${invoice?.buyerCategory}`], ["SME-CP-07 §3.3", "SME-CP-07 §3.5"], at),
+    finding("Open banking cash flow", cheques ? "refer" : "pass", cheques ? "All 12 statement months were analysed. Five returned cheques exceed the referral threshold after obligations are included." : "All 12 statement months were analysed. Inflow, volatility, returned cheques and existing obligations support the cash-flow conclusion.", "Simulated 12-month bank statements", ["12 of 12 months analysed", "Average monthly inflow SAR 2,480,000", cheques ? "5 returned cheques" : "1 returned cheque", "Existing obligations included; DSCR 1.48×"], ["SME-CP-07 §3.4", "SME-CP-07 §5.2", "SME-CP-07 §5.3"], at),
   ];
 }
-
-function formRecommendation(application: CreditApplication, scenario: SimulatedScenario, results: SpecialistCheckResult[]): CreditRecommendation {
-  const hasReferral = results.some((result) => result.outcome === "refer");
-  const outcome: RecommendationOutcome = scenario === "ineligible_revenue" ? "Decline" : hasReferral ? "Refer" : "Approve";
-  const riskGrade = scenario === "low_bureau" ? "D" : application.riskGrade ?? (outcome === "Approve" ? "B" : "C");
-  const reasons: CreditRecommendation["reasons"] = [];
-
-  if (scenario === "ineligible_revenue") {
-    reasons.push({ clause: "SME-CP-07 §2.2", conclusion: "Annual revenue is outside the eligible SME range.", evidence: "Simulated financial statements show annual revenue of SAR 2,400,000; policy range is SAR 3–200 million." });
-  } else {
-    reasons.push(
-      { clause: "SME-CP-07 §2.1", conclusion: "Commercial Registration tenure is eligible.", evidence: "Wathq record shows an active CR for 38 months." },
-      { clause: "SME-CP-07 §2.2", conclusion: "Annual revenue is within the eligible range.", evidence: `Financial statements show ${formatSar(application.annualRevenueSar ?? 28_600_000)} annual revenue.` },
-      { clause: "SME-CP-07 §§2.3–2.5", conclusion: "Tax, sanctions and recent-default eligibility checks are clear.", evidence: "ZATCA registration is in good standing; screening returned no sanctions match; SIMAH found no default in 24 months." },
-    );
-  }
-
-  if (application.product === "invoice_financing") {
-    const invoice = application.invoice;
-    if (scenario === "disputed_invoice") {
-      reasons.push({ clause: "SME-CP-07 §§4.1, 4.5", conclusion: "Refer because the invoice is disputed.", evidence: `${invoice?.number ?? "Submitted invoice"} has a buyer dispute recorded in the simulated ZATCA check.` });
-    } else {
-      const rate = invoice?.buyerCategory === "Government" ? 85 : invoice?.buyerCategory === "Listed" ? 80 : invoice?.buyerCategory === "Established private" ? 70 : 0;
-      reasons.push(
-        { clause: "SME-CP-07 §§4.1, 4.4", conclusion: "Invoice is eligible by tenor, dispute and related-party rules.", evidence: `${invoice?.number ?? "Submitted invoice"} is due in 74 days, undisputed, delivered and not related-party.` },
-        { clause: "SME-CP-07 §§4.2–4.3", conclusion: rate ? `Buyer quality supports an advance rate up to ${rate}%; concentration is within limit.` : "Other buyer category requires referral.", evidence: `${invoice?.buyerCategory ?? "Other"} buyer; largest-buyer concentration is 36% of the facility.` },
-      );
-    }
-  } else {
-    reasons.push(
-      { clause: "SME-CP-07 §5.1", conclusion: "Requested limit is within the policy cap.", evidence: `Requested ${formatSar(application.amountSar)}; lower cap is ${formatSar(Math.min((application.annualRevenueSar ?? 28_600_000) * 0.25, 7_440_000))} from revenue and average inflow.` },
-      { clause: "SME-CP-07 §§5.2, 5.4", conclusion: "Coverage and tenor meet policy.", evidence: "Statement cash flows give 1.48× DSCR; requested tenor is 12 months." },
-    );
-    if (scenario === "returned_cheques") reasons.push({ clause: "SME-CP-07 §5.3", conclusion: "Refer because returned cheques exceed the threshold.", evidence: "Open-banking evidence records 5 returned cheques in 12 months." });
-  }
-
-  if (scenario === "low_bureau") reasons.push({ clause: "SME-CP-07 §§3.1, 6", conclusion: "High bureau risk creates a grade D exception.", evidence: "SIMAH commercial score is 528 (High risk band)." });
-  reasons.push({ clause: "SME-CP-07 §6", conclusion: `Risk grade ${riskGrade} sets the indicative pricing basis.`, evidence: `Bureau band and 1.48× DSCR support ${riskGrade === "D" ? "credit committee pricing" : `grade ${riskGrade}`}.` });
-
-  const reviewerChallenges = results.map((result) => ({
-    specialist: result.specialist,
-    status: result.outcome === "refer" ? "challenge" as const : "confirmed" as const,
-    conclusion: result.outcome === "refer" ? `Reviewer challenges the specialist conclusion: ${result.summary}` : `Reviewer tested the conclusion and found it supported by the cited evidence.`,
-    evidenceGap: result.outcome === "refer" ? (result.specialist.startsWith("ZATCA") ? "Obtain signed buyer confirmation before approval." : result.specialist.startsWith("Open banking") ? "Analyst must confirm whether reversals were operational errors." : "A policy exception cannot be cleared at analyst level.") : undefined,
-  }));
-
-  const decisionAuthority = authorityFor(outcome, application.amountSar, riskGrade);
-  return { outcome, riskGrade, indicativeProfitRate: riskGrade === "A" ? "SAIBOR + 2.25%" : riskGrade === "B" ? "SAIBOR + 3.0%" : riskGrade === "C" ? "SAIBOR + 4.0%" : "Credit committee only", decisionAuthority, authorityClause: "SME-CP-07 §7.1", reasons, reviewerChallenges };
+function createReview(f: SpecialistFinding, scenario: SimulatedScenario, at: string) {
+  const challenged = f.outcome === "refer"; return { id: randomUUID(), findingId: f.id, specialistType: f.specialistType, status: challenged ? "challenge" as const : "accepted" as const, conclusion: challenged ? "The conclusion needs a bounded rework pass that explicitly connects the exception evidence to the policy consequence." : "The finding is supported by its assigned source and policy citations; retain the first pass.", evidenceGap: challenged ? (scenario === "disputed_invoice" ? "State how the recorded dispute affects invoice eligibility and escalation." : scenario === "returned_cheques" ? "State the count and §5.3 threshold explicitly." : "State the score band and resulting exception explicitly.") : null, reasoningDefect: challenged ? "The first pass identifies the risk but does not state the policy consequence precisely enough." : null, policyCitation: challenged ? (scenario === "disputed_invoice" ? "SME-CP-07 §4.5" : scenario === "returned_cheques" ? "SME-CP-07 §5.3" : "SME-CP-07 §6") : null, createdAt: at };
 }
-
-function authorityFor(outcome: RecommendationOutcome, amountSar: number, riskGrade: "A" | "B" | "C" | "D"): string {
-  if (amountSar > 5_000_000 || riskGrade === "D") return "Credit committee — amount above SAR 5m, grade D or policy exception";
-  if (outcome === "Refer") return "Credit analyst reviews the flagged checks";
-  if (outcome === "Decline") return "Credit analyst, then a second analyst (four eyes)";
-  if (amountSar > 2_000_000) return "Senior credit officer";
-  return "Credit analyst confirms";
+function reviseFinding(original: SpecialistFinding, challenge: ReturnType<typeof createReview>, at: string): SpecialistFinding {
+  return { ...original, id: randomUUID(), round: 2, createdAt: at, plainLanguageFinding: `${original.plainLanguageFinding} Rework response: ${challenge.evidenceGap} The original Refer conclusion remains unchanged because the cited exception is material.`, policyCitations: [...new Set([...original.policyCitations, challenge.policyCitation!])], revisionSummary: "Added the reviewer-requested policy consequence and retained the conclusion because the source evidence is unchanged." };
 }
-
-function formatSar(value: number): string {
-  return `SAR ${new Intl.NumberFormat("en-SA", { maximumFractionDigits: 0 }).format(value)}`;
+function formRecommendation(app: CreditApplication, scenario: SimulatedScenario, originals: SpecialistFinding[], revised: SpecialistFinding[], at: string): CreditRecommendation {
+  const corrected = originals.map((item) => revised.find((revision) => revision.specialistType === item.specialistType) ?? item); const ids = (type: SpecialistType) => [corrected.find((f) => f.specialistType === type)!.id];
+  const hasRefer = corrected.some((f) => f.outcome !== "pass"); const outcome: RecommendationOutcome = scenario === "ineligible_revenue" ? "Decline" : hasRefer ? "Refer" : "Approve";
+  const reasons = [{ clause: "SME-CP-07 §2.1", conclusion: "The active CR meets the tenure requirement.", evidence: "Wathq records 38 active months.", findingIds: ids("Wathq company verification") }];
+  if (app.product === "invoice_financing") reasons.push({ clause: scenario === "disputed_invoice" ? "SME-CP-07 §4.5" : "SME-CP-07 §4.2", conclusion: scenario === "disputed_invoice" ? "Refer: the disputed invoice requires escalation and cannot be silently approved." : "The eligible buyer category supports the applicable advance rate; concentration is within 40%.", evidence: scenario === "disputed_invoice" ? "The corrected ZATCA finding records the buyer dispute." : `${app.invoice?.buyerCategory} buyer; concentration 36%; no mismatch, duplicate or related party.`, findingIds: ids("ZATCA e-invoice verification") });
+  else reasons.push({ clause: scenario === "returned_cheques" ? "SME-CP-07 §5.3" : "SME-CP-07 §5.2", conclusion: scenario === "returned_cheques" ? "Refer: returned cheques exceed policy." : "DSCR and statement coverage meet policy.", evidence: scenario === "returned_cheques" ? "Corrected cash-flow finding records 5 returned cheques in 12 months." : "Twelve months analysed; DSCR 1.48×; requested tenor 12 months.", findingIds: ids("Open banking cash flow") });
+  if (scenario === "ineligible_revenue") reasons.push({ clause: "SME-CP-07 §2.2", conclusion: "Decline: annual revenue is below the eligible SME range.", evidence: "Simulated financial statements show SAR 2,400,000 against the SAR 3 million minimum.", findingIds: ids("Wathq company verification") });
+  if (scenario === "low_bureau") reasons.push({ clause: "SME-CP-07 §6", conclusion: "Refer: High bureau risk requires grade D committee consideration.", evidence: "Corrected SIMAH finding records score 528.", findingIds: ids("SIMAH credit bureau") });
+  const grade = scenario === "low_bureau" ? "D" : app.riskGrade ?? (outcome === "Approve" ? "B" : "C"); const pricing = grade === "D" ? "Credit committee only" : grade === "A" ? "SAIBOR + 2.25%" : grade === "B" ? "SAIBOR + 3.0%" : "SAIBOR + 4.0%";
+  return { outcome, riskGrade: grade, indicativeProfitRate: pricing, decisionAuthority: app.amountSar > 5_000_000 || grade === "D" ? "Credit committee" : outcome === "Decline" ? "Credit analyst, then a second analyst (four eyes)" : outcome === "Refer" ? "Credit analyst reviews the flagged checks" : app.amountSar > 2_000_000 ? "Senior credit officer" : "Credit analyst confirms", authorityClause: "SME-CP-07 §7.1", reasons, notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1.", createdAt: at };
 }
