@@ -48,3 +48,8 @@ export class AiFailedError extends AppError {
     super(500, "ai_failed", message, options);
   }
 }
+
+/** 503: a required external service is not configured or temporarily unavailable. */
+export class DependencyUnavailableError extends AppError {
+  constructor(message: string) { super(503, "dependency_unavailable", message); }
+}
