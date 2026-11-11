@@ -9,6 +9,7 @@ describe("loadConfig", () => {
       publicUrl: "http://localhost:3000",
       mongodb: { uri: "mongodb://localhost:27017/app", database: "app" },
       maitento: { baseUrl: undefined, apiKey: undefined, namespace: undefined },
+      simulatedDataScenario: "clean",
     });
   });
 
@@ -21,6 +22,7 @@ describe("loadConfig", () => {
       MAITENTO_BASE_URL: "https://api.maitento.com",
       MAITENTO_API_KEY: "user:secret",
       MAITENTO_NAMESPACE: "claims",
+      SIMULATED_DATA_SCENARIO: "returned_cheques",
     });
     expect(config).toEqual({
       production: true,
@@ -28,6 +30,7 @@ describe("loadConfig", () => {
       publicUrl: "https://claims.example.com",
       mongodb: { uri: "mongodb://db:27017/claims?retryWrites=true", database: "claims" },
       maitento: { baseUrl: "https://api.maitento.com", apiKey: "user:secret", namespace: "claims" },
+      simulatedDataScenario: "returned_cheques",
     });
   });
 
@@ -39,6 +42,7 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ PORT: "eighty" })).toThrow(ConfigError);
     expect(() => loadConfig({ MONGODB_URI: "localhost:27017" })).toThrow(/MONGODB_URI/);
     expect(() => loadConfig({ NODE_ENV: "production" })).toThrow(/Set MONGODB_URI/);
+    expect(() => loadConfig({ SIMULATED_DATA_SCENARIO: "live" })).toThrow(/SIMULATED_DATA_SCENARIO/);
   });
 });
 

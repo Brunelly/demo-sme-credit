@@ -1,0 +1,3 @@
+model = @ref("deepseek.deepseek-v4-pro")
+prompt = @prompt("cash-flow-specialist")
+summary = "Checks simulated open-banking cash flow under SME-CP-07 §3.4"

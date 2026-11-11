@@ -1,0 +1,3 @@
+model = @ref("deepseek.deepseek-v4-pro")
+prompt = @prompt("zatca-specialist")
+summary = "Checks simulated ZATCA e-invoice evidence under SME-CP-07 §3.3"

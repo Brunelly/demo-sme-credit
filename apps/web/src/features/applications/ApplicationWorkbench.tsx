@@ -1,9 +1,10 @@
-import type { CreditApplication } from "@app/contracts";
-import { Badge, CellStack, DataTable, EmptyState, type Column } from "@app/ui";
+import type { ApplicationCheckRun, CreditApplication, SimulatedScenario } from "@app/contracts";
+import { Alert, Badge, Button, CellStack, DataTable, EmptyState, ErrorState, RunTimeline, type Column } from "@app/ui";
+import { Play } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useResource } from "../../lib/use-resource.ts";
 import { stageLabels, productLabels } from "./application-labels.ts";
-import { listApplications } from "./applications.api.ts";
+import { getApplicationChecks, listApplications, runApplicationChecks } from "./applications.api.ts";
 import styles from "./ApplicationWorkbench.module.css";
 
 const sar = new Intl.NumberFormat("en-SA", { style: "currency", currency: "SAR", maximumFractionDigits: 0 });
@@ -78,6 +79,22 @@ export function ApplicationWorkbench() {
 
 function CaseWorkspace({ application }: { application: CreditApplication }) {
   const stage = stageLabels[application.stage];
+  const checks = useResource((signal) => getApplicationChecks(application.id, signal), [application.id]);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string>();
+
+  async function runSpecialists() {
+    setRunning(true);
+    setRunError(undefined);
+    try {
+      await runApplicationChecks(application.id);
+      checks.reload();
+    } catch (error) {
+      setRunError(error instanceof Error ? error.message : "The checks could not be run.");
+    } finally {
+      setRunning(false);
+    }
+  }
   return (
     <div className={styles.caseContent}>
       <header className={styles.caseHeader}>
@@ -94,21 +111,41 @@ function CaseWorkspace({ application }: { application: CreditApplication }) {
         <div><dt>Facility amount</dt><dd className={styles.amount}>{sar.format(application.amountSar)}</dd></div>
         <div><dt>Queue age</dt><dd>{ageInDays(application.receivedAt)} days</dd></div>
         <div><dt>Risk grade</dt><dd>{application.riskGrade ?? "Pending assessment"}</dd></div>
+        <div><dt>Annual revenue</dt><dd className={styles.amount}>{application.annualRevenueSar ? sar.format(application.annualRevenueSar) : "Pending evidence"}</dd></div>
+        <div><dt>Buyer quality</dt><dd>{application.invoice?.buyerCategory ?? "Not applicable"}</dd></div>
       </dl>
       <section className={styles.policy} aria-labelledby="authority-heading">
         <h3 id="authority-heading">Decision authority</h3>
         <p>{decisionAuthority(application)}</p>
         <span>SME-CP-07 §7</span>
       </section>
-      <section className={styles.checks} aria-labelledby="eligibility-heading">
-        <h3 id="eligibility-heading">Eligibility evidence</h3>
-        <ul>
-          <li>Commercial Registration and operating history</li>
-          <li>Revenue and financial statements</li>
-          <li>ZATCA registration and screening results</li>
-        </ul>
-        <span>SME-CP-07 §2</span>
+      <section className={styles.checks} aria-labelledby="specialists-heading">
+        <div className={styles.checkHeading}>
+          <div><h3 id="specialists-heading">Specialist checks</h3><p>SIMAH, Wathq, ZATCA and open-banking sources are simulated.</p></div>
+          <Button variant="primary" size="sm" icon={<Play size={15} />} loading={running} onClick={runSpecialists}>Run four checks</Button>
+        </div>
+        {runError && <Alert tone="danger" title="Checks not completed">{runError}</Alert>}
+        {checks.error ? <ErrorState title="Checks unavailable" message={checks.error} onRetry={checks.reload} compact /> : <CheckLedger run={checks.data?.latest ?? null} loading={checks.loading} />}
       </section>
+    </div>
+  );
+}
+
+const scenarioLabels: Record<SimulatedScenario, string> = { clean: "Clean", disputed_invoice: "Disputed invoice", low_bureau: "Low bureau", returned_cheques: "Several returned cheques" };
+
+function CheckLedger({ run, loading }: { run: ApplicationCheckRun | null; loading: boolean }) {
+  if (loading) return <p className={styles.checkEmpty}>Loading the latest run…</p>;
+  if (!run) return <EmptyState title="No checks run" description="Run the four policy specialists for this application." compact />;
+  return (
+    <div className={styles.ledger}>
+      <div className={styles.runMeta}><Badge tone="neutral">Simulated data</Badge><span>{scenarioLabels[run.scenario]} scenario</span><time dateTime={run.performedAt}>{new Intl.DateTimeFormat("en-SA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(run.performedAt))}</time></div>
+      <RunTimeline label="Policy specialist check results" steps={run.results.map((result) => ({
+        id: result.specialist,
+        status: result.outcome === "pass" ? "done" : "failed",
+        label: <><span>{result.specialist}</span> <Badge tone={result.outcome === "pass" ? "success" : "warning"}>{result.outcome === "pass" ? "Pass" : "Refer"}</Badge></>,
+        meta: result.clause,
+        detail: <><p>{result.summary}</p><ul>{result.evidence.map((item) => <li key={item}>{item}</li>)}</ul></>,
+      }))} />
     </div>
   );
 }
