@@ -1,0 +1,5 @@
+agent = { name = "Final credit recommendation assistant" agent = @ref("final-credit-recommendation") }
+task = @prompt("prepare-final-recommendation")
+inputs.prompts = [ { name = "correctedFindings" description = "Application facts and corrected specialist findings as JSON" required = true } ]
+schema.solution = @json("final-recommendation")
+duration.max = "00:02:00"

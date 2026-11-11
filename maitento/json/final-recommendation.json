@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "properties": {
+    "outcome": { "type": "string", "enum": ["Approve", "Refer", "Decline"] },
+    "riskGrade": { "type": ["string", "null"], "enum": ["A", "B", "C", "D", null] },
+    "indicativeProfitRate": { "type": ["string", "null"] },
+    "reasons": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "properties": {
+      "clause": { "type": "string" }, "conclusion": { "type": "string" }, "evidence": { "type": "string" }, "findingIds": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+    }, "required": ["clause", "conclusion", "evidence", "findingIds"] } },
+    "notice": { "type": "string" }
+  },
+  "required": ["outcome", "riskGrade", "indicativeProfitRate", "reasons", "notice"]
+}

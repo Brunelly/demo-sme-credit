@@ -1,0 +1,3 @@
+model = @ref("deepseek.deepseek-v4-pro")
+prompt = @prompt("final-credit-recommendation")
+summary = "Prepares a non-binding SME-CP-07 recommendation from corrected specialist findings"

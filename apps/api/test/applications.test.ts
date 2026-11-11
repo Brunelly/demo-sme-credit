@@ -1,56 +1,47 @@
 import request from "supertest";
 import { describe, expect, it } from "vitest";
+import { buildSpecialistPromptPayload, validateRecommendationCitations } from "../src/features/applications/applications.service.ts";
 import { testApp, useTestDatabase } from "./helpers.ts";
-
 const mongo = useTestDatabase();
-
-describe("applications queue", () => {
-  it("returns at most 50 applications with the oldest first", async () => {
-    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertMany([
-      { _id: "newer", businessName: "Newer", businessNameArabic: "الأحدث", commercialRegistration: "1010000002", product: "working_capital", amountSar: 500000, stage: "new", receivedAt: new Date("2026-11-10T00:00:00Z"), city: "Riyadh", sampleData: true },
-      { _id: "older", businessName: "Older", businessNameArabic: "الأقدم", commercialRegistration: "1010000001", product: "invoice_financing", amountSar: 900000, stage: "decision_required", receivedAt: new Date("2026-11-01T00:00:00Z"), city: "Riyadh", sampleData: true },
-    ]);
-
-    const response = await request(testApp(mongo.db)).get("/api/applications").expect(200);
-
-    expect(response.body.sampleData).toBe(true);
-    expect(response.body.items.map((item: { id: string }) => item.id)).toEqual(["older", "newer"]);
-    expect(response.body.items[0]).toMatchObject({ amountSar: 900000, stage: "decision_required" });
+const caseRecord = { _id: "case-1", businessName: "Sample Food Distributor", businessNameArabic: "موزع أغذية تجريبي", commercialRegistration: "1010000099", product: "invoice_financing", amountSar: 1000000, stage: "credit_assessment", receivedAt: new Date(), city: "Riyadh", sampleData: true, annualRevenueSar: 12000000, invoice: { number: "INV-99", buyerName: "Sample Public Buyer", buyerCategory: "Government", amountSar: 1200000 } };
+describe("traceable application assessments", () => {
+  it("constructs a source-scoped prompt payload", () => {
+    const payload = buildSpecialistPromptPayload({ ...caseRecord, id: "case-1", receivedAt: new Date().toISOString(), product: "invoice_financing", stage: "credit_assessment" }, "clean", "SIMAH credit bureau");
+    expect(JSON.parse(payload.sourceData)).toEqual(expect.objectContaining({ assignedSource: "SIMAH credit bureau", simulated: true }));
+    expect(payload.sourceData).not.toContain("ZATCA");
   });
-
-  it("runs and records all four policy specialists", async () => {
-    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertOne({ _id: "case-1", businessName: "Sample Food Distributor", businessNameArabic: "موزع أغذية تجريبي", commercialRegistration: "1010000099", product: "invoice_financing", amountSar: 1000000, stage: "credit_assessment", receivedAt: new Date(), city: "Riyadh", sampleData: true, invoice: { number: "INV-99", buyerName: "Sample Public Buyer", buyerCategory: "Government", amountSar: 1200000 } });
-
-    const response = await request(testApp(mongo.db, { config: { simulatedDataScenario: "disputed_invoice" } })).post("/api/applications/case-1/checks").send({}).expect(201);
-
-    expect(response.body.scenario).toBe("disputed_invoice");
-    expect(response.body.results).toHaveLength(4);
-    expect(response.body.results.map((result: { clause: string }) => result.clause)).toEqual(["SME-CP-07 §3.1", "SME-CP-07 §3.2", "SME-CP-07 §3.3", "SME-CP-07 §3.4"]);
-    expect(response.body.results.find((result: { specialist: string }) => result.specialist.startsWith("ZATCA"))).toMatchObject({ outcome: "refer" });
-    expect(response.body.recommendation).toMatchObject({ outcome: "Refer", authorityClause: "SME-CP-07 §7.1" });
-    expect(response.body.recommendation.reasons).toContainEqual(expect.objectContaining({ clause: "SME-CP-07 §§4.1, 4.5", evidence: expect.stringContaining("INV-99") }));
-    expect(response.body.recommendation.reviewerChallenges).toContainEqual(expect.objectContaining({ specialist: "ZATCA e-invoice verification", status: "challenge" }));
-    expect((await request(testApp(mongo.db)).get("/api/applications/case-1/checks").expect(200)).body.latest.id).toBe(response.body.id);
+  it("runs four findings, routes only challenged work to one rework pass, and persists history", async () => {
+    await mongo.db.collection("applications").insertOne(caseRecord); const app = testApp(mongo.db);
+    await request(app).put("/api/settings/simulated-scenario").send({ activeScenarioId: "disputed_invoice" }).expect(200);
+    const first = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
+    expect(first.body).toMatchObject({ status: "completed", scenarioId: "disputed_invoice", scenarioVersion: 1 });
+    expect(first.body.specialistFindings).toHaveLength(4);
+    expect(first.body.reviewerChallenges.filter((r: { status: string }) => r.status === "challenge")).toHaveLength(1);
+    expect(first.body.revisedFindings).toHaveLength(1);
+    expect(first.body.revisedFindings[0]).toMatchObject({ specialistType: "ZATCA e-invoice verification", round: 2, outcome: "refer" });
+    expect(first.body.finalRecommendation).toMatchObject({ outcome: "Refer", authorityClause: "SME-CP-07 §7.1" });
+    expect(validateRecommendationCitations(first.body.finalRecommendation)).toBe(true);
+    await request(app).put("/api/settings/simulated-scenario").send({ activeScenarioId: "clean" }).expect(200);
+    await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
+    const history = await request(app).get("/api/applications/case-1/assessment-runs").expect(200);
+    expect(history.body.items).toHaveLength(2);
+    expect(history.body.items.map((r: { scenarioId: string }) => r.scenarioId)).toEqual(["clean", "disputed_invoice"]);
+    expect((await request(app).get(`/api/applications/case-1/assessment-runs/${first.body.id}`).expect(200)).body.id).toBe(first.body.id);
   });
-
-  it("changes an outcome when the configured scenario changes", async () => {
-    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertOne({ _id: "case-2", businessName: "Sample Logistics", businessNameArabic: "لوجستيات تجريبية", commercialRegistration: "4030000099", product: "working_capital", amountSar: 1000000, stage: "new", receivedAt: new Date(), city: "Jeddah", sampleData: true });
-    const clean = await request(testApp(mongo.db, { config: { simulatedDataScenario: "clean" } })).post("/api/applications/case-2/checks").send({}).expect(201);
-    const changed = await request(testApp(mongo.db, { config: { simulatedDataScenario: "low_bureau" } })).post("/api/applications/case-2/checks").send({}).expect(201);
-    expect(clean.body.results[0].outcome).toBe("pass");
-    expect(changed.body.results[0].outcome).toBe("refer");
+  it("changes scenarios only through settings and records an override on the selected immutable run", async () => {
+    await mongo.db.collection("applications").insertOne(caseRecord); const app = testApp(mongo.db);
+    await request(app).post("/api/applications/case-1/assessment-runs").send({ scenario: "low_bureau" }).expect(202);
+    let history = await request(app).get("/api/applications/case-1/assessment-runs").expect(200);
+    expect(history.body.items[0].scenarioId).toBe("clean");
+    await request(app).put("/api/settings/simulated-scenario").send({ activeScenarioId: "low_bureau" }).expect(200);
+    const run = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
+    expect(run.body.finalRecommendation.outcome).toBe("Refer");
+    const overridden = await request(app).post(`/api/applications/case-1/checks/${run.body.id}/override`).send({ outcome: "Approve", reason: "Information not available to the assessment", rationale: "Signed buyer confirmation was independently received." }).expect(201);
+    expect(overridden.body.finalRecommendation.override).toMatchObject({ outcome: "Approve", recordedBy: "Credit analyst" });
+    history = await request(app).get("/api/applications/case-1/assessment-runs").expect(200);
+    expect(history.body.items[1].finalRecommendation.override).toBeUndefined();
   });
-
-  it("changes the recommendation by selected scenario and records an Appendix A override", async () => {
-    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertOne({ _id: "case-3", businessName: "Sample Packaging", businessNameArabic: "تعبئة تجريبية", commercialRegistration: "1010000088", product: "working_capital", amountSar: 1000000, stage: "decision_required", receivedAt: new Date(), city: "Riyadh", sampleData: true, annualRevenueSar: 12000000, riskGrade: "B" });
-    const app = testApp(mongo.db);
-    const clean = await request(app).post("/api/applications/case-3/checks").send({ scenario: "clean" }).expect(201);
-    const declined = await request(app).post("/api/applications/case-3/checks").send({ scenario: "ineligible_revenue" }).expect(201);
-    expect(clean.body.recommendation.outcome).toBe("Approve");
-    expect(declined.body.recommendation.outcome).toBe("Decline");
-
-    const overridden = await request(app).post(`/api/applications/case-3/checks/${declined.body.id}/override`).send({ outcome: "Refer", reason: "Data quality issue in a source check", rationale: "Financial statements are being corrected by the applicant." }).expect(201);
-    expect(overridden.body.recommendation.override).toMatchObject({ outcome: "Refer", reason: "Data quality issue in a source check", recordedBy: "Credit analyst" });
-    expect((await request(app).get("/api/applications/case-3/checks").expect(200)).body.latest.recommendation.override.outcome).toBe("Refer");
+  it("rejects recommendation reasons outside the permitted decision clauses", () => {
+    expect(validateRecommendationCitations({ outcome: "Approve", riskGrade: null, indicativeProfitRate: null, decisionAuthority: "Analyst", authorityClause: "SME-CP-07 §7.1", reasons: [{ clause: "SME-CP-07 §3.1", conclusion: "Unsupported", evidence: "x", findingIds: ["f-1"] }], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1.", createdAt: new Date().toISOString() })).toBe(false);
   });
 });

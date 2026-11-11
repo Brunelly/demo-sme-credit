@@ -1,40 +1,28 @@
-import type { ApplicationCheckRun, RecommendationOverride, SpecialistCheckResult } from "@app/contracts";
+import type { ApplicationCheckRun, RecommendationOverride } from "@app/contracts";
 import type { Db, IndexDescription } from "mongodb";
-
 export const APPLICATION_CHECK_RUNS_COLLECTION = "applicationCheckRuns";
-interface CheckRunDocument extends Omit<ApplicationCheckRun, "id" | "performedAt"> { _id: string; performedAt: Date }
-
+interface RunDocument extends Omit<ApplicationCheckRun, "id"> { _id: string }
 export const applicationCheckRunIndexes: IndexDescription[] = [
-  { key: { applicationId: 1, performedAt: -1, _id: -1 }, name: "application_check_runs_latest" },
+  { key: { applicationId: 1, startedAt: -1, _id: -1 }, name: "application_assessment_runs_history" },
 ];
-
 export class ApplicationChecksRepository {
   private readonly db: Db;
   constructor(db: Db) { this.db = db; }
-
-  async record(run: Omit<ApplicationCheckRun, "performedAt"> & { performedAt: Date }): Promise<ApplicationCheckRun> {
-    const { id, ...values } = run;
-    const document: CheckRunDocument = { ...values, _id: id };
-    await this.db.collection<CheckRunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).insertOne(document);
-    return this.toContract(document);
+  async record(run: ApplicationCheckRun): Promise<ApplicationCheckRun> {
+    const { id, ...rest } = run; await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).insertOne({ _id: id, ...rest }); return run;
   }
-
-  async latest(applicationId: string): Promise<ApplicationCheckRun | null> {
-    const document = await this.db.collection<CheckRunDocument>(APPLICATION_CHECK_RUNS_COLLECTION)
-      .find({ applicationId, recommendation: { $exists: true } }).sort({ performedAt: -1, _id: -1 }).limit(1).next();
-    return document ? this.toContract(document) : null;
+  async list(applicationId: string): Promise<ApplicationCheckRun[]> {
+    const rows = await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).find({ applicationId }).sort({ startedAt: -1, _id: -1 }).limit(50).toArray();
+    return rows.map(({ _id, ...row }) => ({ id: _id, ...row }));
   }
-
+  async find(applicationId: string, runId: string): Promise<ApplicationCheckRun | null> {
+    const row = await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).findOne({ _id: runId, applicationId });
+    if (!row) return null; const { _id, ...rest } = row; return { id: _id, ...rest };
+  }
+  async latest(applicationId: string): Promise<ApplicationCheckRun | null> { return (await this.list(applicationId))[0] ?? null; }
   async recordOverride(applicationId: string, runId: string, override: RecommendationOverride): Promise<ApplicationCheckRun | null> {
-    const result = await this.db.collection<CheckRunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).findOneAndUpdate(
-      { _id: runId, applicationId },
-      { $set: { "recommendation.override": override } },
-      { returnDocument: "after" },
-    );
-    return result ? this.toContract(result) : null;
-  }
-
-  private toContract(document: CheckRunDocument): ApplicationCheckRun {
-    return { id: document._id, applicationId: document.applicationId, scenario: document.scenario, performedAt: document.performedAt.toISOString(), results: document.results as SpecialistCheckResult[], recommendation: document.recommendation };
+    const row = await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).findOneAndUpdate(
+      { _id: runId, applicationId, status: "completed" }, { $set: { "finalRecommendation.override": override } }, { returnDocument: "after" });
+    if (!row) return null; const { _id, ...rest } = row; return { id: _id, ...rest };
   }
 }

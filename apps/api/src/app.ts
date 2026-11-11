@@ -10,6 +10,9 @@ import { ApplicationsRepository } from "./features/applications/applications.rep
 import { ApplicationsService } from "./features/applications/applications.service.ts";
 import { applicationsRoutes } from "./features/applications/applications.routes.ts";
 import { ApplicationChecksRepository } from "./features/applications/application-checks.repository.ts";
+import { SimulatedScenarioRepository } from "./features/applications/simulated-scenario.repository.ts";
+import { SettingsService } from "./features/settings/settings.service.ts";
+import { settingsRoutes } from "./features/settings/settings.routes.ts";
 import { apiNotFound, errorHandler } from "./http/error-handler.ts";
 import { requestLogger } from "./http/request-logger.ts";
 import { RESERVED_PREFIX, reservedPaths } from "./http/reserved.ts";
@@ -43,12 +46,14 @@ export function createApp({ config, db, ai, longRunning, webDistDir }: AppDepend
   // Work that outlives its request (a background AI run, an import) also registers its collection, and its service
   // takes `longRunning` to lease each run: longRunning.register({ collection: REPORTS_COLLECTION }). See db/long-running.ts.
   const assistant = new AssistantService(ai);
-  const applications = new ApplicationsService(new ApplicationsRepository(db), new ApplicationChecksRepository(db), config.simulatedDataScenario);
+  const scenarios = new SimulatedScenarioRepository(db, config.simulatedDataScenario);
+  const applications = new ApplicationsService(new ApplicationsRepository(db), new ApplicationChecksRepository(db), scenarios);
 
   const api = express.Router();
   api.use("/health", healthRoutes(db, ai));
   api.use("/assistant", assistantRoutes(assistant));
   api.use("/applications", applicationsRoutes(applications));
+  api.use("/settings", settingsRoutes(new SettingsService(scenarios)));
   api.use(apiNotFound);
   app.use("/api", api);
 

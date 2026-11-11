@@ -1,0 +1,5 @@
+agent = { name = "Credit assessment reviewer" agent = @ref("credit-assessment-reviewer") }
+task = @prompt("review-specialist-finding")
+inputs.prompts = [ { name = "finding" description = "One finding and only its assigned simulated source as JSON" required = true } ]
+schema.solution = @json("reviewer-result")
+duration.max = "00:02:00"
