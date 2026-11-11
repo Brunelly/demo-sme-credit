@@ -43,6 +43,17 @@ describe("SME Credit Desk", () => {
     expect(await screen.findByText("The commercial score is High risk and requires referral.")).toBeInTheDocument();
     expect(api.calls).toContainEqual({ method: "POST", path: "/api/applications/app-1/assessment-runs", search: "", body: {} });
   });
+  it("shows the current Maitento stage and completed specialist finding", async () => {
+    const runningRun = { ...run, status: "running", completedAt: null, finalRecommendation: null, reviewerChallenges: [], revisedFindings: [], steps: [
+      { key: "SIMAH credit bureau", label: "SIMAH credit bureau", status: "completed", startedAt: at, completedAt: at, maitentoRunIds: ["mt-1"] },
+      { key: "Wathq company verification", label: "Wathq company verification", status: "running", startedAt: at, completedAt: null, maitentoRunIds: [] },
+      { key: "reviewer", label: "Independent reviewer", status: "queued", startedAt: null, completedAt: null, maitentoRunIds: [] },
+    ] };
+    mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/assessment-runs": () => ({ items: [runningRun], simulatedData: true }) }); renderAt("/");
+    expect(await screen.findByRole("list", { name: "Maitento assessment progress" })).toHaveTextContent("Wathq company verificationRunning through Maitento");
+    expect(screen.getByText("The commercial score is High risk and requires referral.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Assessment running" })).toBeDisabled();
+  });
   it("shows assessment request failures without internal details", async () => {
     mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/assessment-runs": () => ({ items: [], simulatedData: true }), "POST /api/applications/app-1/assessment-runs": () => status(503, { error: { code: "dependency_unavailable", message: "Assessment service is temporarily unavailable." } }) }); renderAt("/");
     await userEvent.click(await screen.findByRole("button", { name: "Run assessment" }));

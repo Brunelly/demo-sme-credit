@@ -9,8 +9,9 @@ import { healthRoutes } from "./features/health/health.routes.ts";
 import { ApplicationsRepository } from "./features/applications/applications.repository.ts";
 import { ApplicationsService } from "./features/applications/applications.service.ts";
 import { applicationsRoutes } from "./features/applications/applications.routes.ts";
-import { ApplicationChecksRepository } from "./features/applications/application-checks.repository.ts";
+import { APPLICATION_CHECK_RUNS_COLLECTION, ApplicationChecksRepository } from "./features/applications/application-checks.repository.ts";
 import { SimulatedScenarioRepository } from "./features/applications/simulated-scenario.repository.ts";
+import { SimulatedSourcesRepository } from "./features/applications/simulated-sources.repository.ts";
 import { SettingsService } from "./features/settings/settings.service.ts";
 import { settingsRoutes } from "./features/settings/settings.routes.ts";
 import { ReviewsRepository } from "./features/reviews/reviews.repository.ts";
@@ -50,7 +51,9 @@ export function createApp({ config, db, ai, longRunning, webDistDir }: AppDepend
   // takes `longRunning` to lease each run: longRunning.register({ collection: REPORTS_COLLECTION }). See db/long-running.ts.
   const assistant = new AssistantService(ai);
   const scenarios = new SimulatedScenarioRepository(db, config.simulatedDataScenario);
-  const applications = new ApplicationsService(new ApplicationsRepository(db), new ApplicationChecksRepository(db), scenarios);
+  const checks = new ApplicationChecksRepository(db);
+  const applications = new ApplicationsService(new ApplicationsRepository(db), checks, scenarios, new SimulatedSourcesRepository(db), ai, longRunning);
+  longRunning.register({ collection: APPLICATION_CHECK_RUNS_COLLECTION });
 
   const api = express.Router();
   api.use("/health", healthRoutes(db, ai));

@@ -25,11 +25,11 @@ export interface FindingEvidence { fact: string; sourceReference: string }
 export interface SpecialistFinding {
   id: string; specialistType: SpecialistType; round: 1 | 2; outcome: "pass" | "refer" | "human_review";
   plainLanguageFinding: string; sourceLabel: string; evidence: FindingEvidence[]; policyCitations: string[];
-  createdAt: string; revisionSummary: string | null;
+  createdAt: string; revisionSummary: string | null; maitentoRunId?: string;
 }
 export interface ReviewerChallenge {
   id: string; findingId: string; specialistType: SpecialistType; status: "accepted" | "challenge" | "human_review";
-  conclusion: string; evidenceGap: string | null; reasoningDefect: string | null; policyCitation: string | null; createdAt: string;
+  conclusion: string; evidenceGap: string | null; reasoningDefect: string | null; policyCitation: string | null; createdAt: string; maitentoRunId?: string;
 }
 export interface RecommendationReason { clause: string; conclusion: string; evidence: string; findingIds: string[] }
 export interface RecommendationOverride { outcome: RecommendationOutcome; reason: OverrideReason; rationale: string; recordedAt: string; recordedBy: "Credit analyst" }
@@ -39,11 +39,16 @@ export interface CreditRecommendation {
   notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1."; createdAt: string; override?: RecommendationOverride;
 }
 export type AssessmentStatus = "running" | "completed" | "failed" | "interrupted";
+export interface AssessmentStep {
+  key: string; label: string; status: "queued" | "running" | "completed" | "failed";
+  startedAt: string | null; completedAt: string | null; maitentoRunIds: string[];
+}
 export interface ApplicationCheckRun {
   id: string; applicationId: string; scenarioId: SimulatedScenario; scenarioVersion: number; status: AssessmentStatus;
   startedAt: string; completedAt: string | null; specialistFindings: SpecialistFinding[]; reviewerChallenges: ReviewerChallenge[];
   revisedFindings: SpecialistFinding[]; finalRecommendation: CreditRecommendation | null; failureReason: string | null;
   interruptedReason?: string; createdBy: "Credit analyst";
+  steps?: AssessmentStep[];
 }
 export interface AssessmentRunsResponse { items: ApplicationCheckRun[]; simulatedData: true }
 export interface ApplicationChecksResponse { latest: ApplicationCheckRun | null; simulatedData: true }

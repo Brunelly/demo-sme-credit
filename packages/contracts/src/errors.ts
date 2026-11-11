@@ -17,6 +17,7 @@ export type ErrorCode =
   | "payload_too_large"
   | "reserved_path"
   | "ai_failed"
+  | "dependency_unavailable"
   | "internal_error";
 
 export interface ValidationIssue {

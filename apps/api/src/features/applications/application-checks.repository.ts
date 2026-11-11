@@ -1,4 +1,4 @@
-import type { ApplicationCheckRun, RecommendationOverride, SpecialistType } from "@app/contracts";
+import type { ApplicationCheckRun, AssessmentStep, CreditRecommendation, RecommendationOverride, ReviewerChallenge, SpecialistFinding, SpecialistType } from "@app/contracts";
 import type { Db, IndexDescription } from "mongodb";
 export const APPLICATION_CHECK_RUNS_COLLECTION = "applicationCheckRuns";
 interface RunDocument extends Omit<ApplicationCheckRun, "id"> { _id: string }
@@ -16,6 +16,29 @@ export class ApplicationChecksRepository {
   async record(run: ApplicationCheckRun): Promise<ApplicationCheckRun> {
     const { id, ...rest } = run; await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).insertOne({ _id: id, ...rest }); return run;
   }
+  async updateStep(runId: string, held: { "lease.owner": string }, key: string, status: AssessmentStep["status"], at: string, runIdFromMaitento?: string): Promise<boolean> {
+    const set: Record<string, unknown> = { "steps.$.status": status };
+    if (status === "running") set["steps.$.startedAt"] = at;
+    if (status === "completed" || status === "failed") set["steps.$.completedAt"] = at;
+    const update: Record<string, unknown> = { $set: set };
+    if (runIdFromMaitento) update.$push = { "steps.$.maitentoRunIds": runIdFromMaitento };
+    return (await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).updateOne({ _id: runId, ...held, "steps.key": key }, update)).matchedCount === 1;
+  }
+  async addFinding(runId: string, held: { "lease.owner": string }, finding: SpecialistFinding): Promise<boolean> {
+    return (await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).updateOne({ _id: runId, ...held }, { $push: { specialistFindings: finding } })).matchedCount === 1;
+  }
+  async addReview(runId: string, held: { "lease.owner": string }, review: ReviewerChallenge): Promise<boolean> {
+    return (await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).updateOne({ _id: runId, ...held }, { $push: { reviewerChallenges: review } })).matchedCount === 1;
+  }
+  async addRevision(runId: string, held: { "lease.owner": string }, finding: SpecialistFinding): Promise<boolean> {
+    return (await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).updateOne({ _id: runId, ...held }, { $push: { revisedFindings: finding } })).matchedCount === 1;
+  }
+  async complete(runId: string, held: { "lease.owner": string }, recommendation: CreditRecommendation, at: string): Promise<boolean> {
+    return (await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).updateOne({ _id: runId, ...held }, { $set: { status: "completed", finalRecommendation: recommendation, completedAt: at }, $unset: { lease: "" } })).matchedCount === 1;
+  }
+  async fail(runId: string, held: { "lease.owner": string }, reason: string, at: string): Promise<void> {
+    await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).updateOne({ _id: runId, ...held }, { $set: { status: "failed", failureReason: reason, completedAt: at, "steps.$[active].status": "failed", "steps.$[active].completedAt": at }, $unset: { lease: "" } }, { arrayFilters: [{ "active.status": "running" }] });
+  }
   async list(applicationId: string): Promise<ApplicationCheckRun[]> {
     const rows = await this.db.collection<RunDocument | LegacyRunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).find({ applicationId }).sort({ startedAt: -1, _id: -1 }).limit(50).toArray();
     return rows.map((row) => this.toContract(row));
@@ -23,6 +46,10 @@ export class ApplicationChecksRepository {
   async find(applicationId: string, runId: string): Promise<ApplicationCheckRun | null> {
     const row = await this.db.collection<RunDocument | LegacyRunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).findOne({ _id: runId, applicationId });
     return row ? this.toContract(row) : null;
+  }
+  async findById(runId: string): Promise<ApplicationCheckRun | null> {
+    const row = await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).findOne({ _id: runId });
+    if (!row) return null; const { _id, ...rest } = row; return { id: _id, ...rest };
   }
   async latest(applicationId: string): Promise<ApplicationCheckRun | null> { return (await this.list(applicationId))[0] ?? null; }
   async recordOverride(applicationId: string, runId: string, override: RecommendationOverride): Promise<ApplicationCheckRun | null> {

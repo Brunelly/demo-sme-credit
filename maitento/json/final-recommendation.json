@@ -5,10 +5,12 @@
     "outcome": { "type": "string", "enum": ["Approve", "Refer", "Decline"] },
     "riskGrade": { "type": ["string", "null"], "enum": ["A", "B", "C", "D", null] },
     "indicativeProfitRate": { "type": ["string", "null"] },
+    "decisionAuthority": { "type": "string" },
+    "authorityClause": { "type": "string", "const": "SME-CP-07 §7.1" },
     "reasons": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "properties": {
       "clause": { "type": "string" }, "conclusion": { "type": "string" }, "evidence": { "type": "string" }, "findingIds": { "type": "array", "minItems": 1, "items": { "type": "string" } }
     }, "required": ["clause", "conclusion", "evidence", "findingIds"] } },
     "notice": { "type": "string" }
   },
-  "required": ["outcome", "riskGrade", "indicativeProfitRate", "reasons", "notice"]
+  "required": ["outcome", "riskGrade", "indicativeProfitRate", "decisionAuthority", "authorityClause", "reasons", "notice"]
 }
