@@ -9,12 +9,20 @@ interface LegacyRunDocument {
 }
 export const applicationCheckRunIndexes: IndexDescription[] = [
   { key: { applicationId: 1, startedAt: -1, _id: -1 }, name: "application_assessment_runs_history" },
+  { key: { applicationId: 1 }, name: "one_running_assessment_per_application", unique: true, partialFilterExpression: { status: "running" } },
 ];
 export class ApplicationChecksRepository {
   private readonly db: Db;
   constructor(db: Db) { this.db = db; }
-  async record(run: ApplicationCheckRun): Promise<ApplicationCheckRun> {
-    const { id, ...rest } = run; await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).insertOne({ _id: id, ...rest }); return run;
+  async record(run: ApplicationCheckRun): Promise<ApplicationCheckRun | null> {
+    const { id, ...rest } = run;
+    try {
+      await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).insertOne({ _id: id, ...rest });
+      return run;
+    } catch (error) {
+      if ((error as { code?: number }).code === 11000) return null;
+      throw error;
+    }
   }
   async updateStep(runId: string, held: { "lease.owner": string }, key: string, status: AssessmentStep["status"], at: string, runIdFromMaitento?: string): Promise<boolean> {
     const set: Record<string, unknown> = { "steps.$.status": status };
@@ -29,6 +37,12 @@ export class ApplicationChecksRepository {
   }
   async addReview(runId: string, held: { "lease.owner": string }, review: ReviewerChallenge): Promise<boolean> {
     return (await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).updateOne({ _id: runId, ...held }, { $push: { reviewerChallenges: review } })).matchedCount === 1;
+  }
+  async requireHumanReview(runId: string, held: { "lease.owner": string }, findingId: string, conclusion: string): Promise<boolean> {
+    return (await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).updateOne(
+      { _id: runId, ...held, "specialistFindings.id": findingId },
+      { $set: { "specialistFindings.$.outcome": "human_review", "specialistFindings.$.plainLanguageFinding": conclusion } },
+    )).matchedCount === 1;
   }
   async addRevision(runId: string, held: { "lease.owner": string }, finding: SpecialistFinding): Promise<boolean> {
     return (await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).updateOne({ _id: runId, ...held }, { $push: { revisedFindings: finding } })).matchedCount === 1;

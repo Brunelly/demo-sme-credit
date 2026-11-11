@@ -142,6 +142,55 @@ describe("traceable Maitento assessments", () => {
     expect(calls).toHaveLength(9);
     expect(calls.some((name) => name.startsWith("rework-"))).toBe(false);
   });
+  it("honours a reviewer human-review request in the finding and final recommendation", async () => {
+    await seedSourcePack();
+    const delegate = scriptedAi();
+    const ai: AiRunner = {
+      namespace: "test",
+      async runInteraction(name, inputs) {
+        if (name === "review-specialist-finding") {
+          const finding = JSON.parse(inputs.finding!).finding as { specialistType: string };
+          if (finding.specialistType === "Wathq company verification") {
+            return { runId: "review-human", output: JSON.stringify({ status: "human_review", conclusion: "The CR evidence is malformed and requires analyst review.", evidenceGap: "A readable CR record is required.", reasoningDefect: null, policyCitation: "SME-CP-07 §3.2" }) };
+          }
+        }
+        if (name === "prepare-final-recommendation") {
+          const findings = JSON.parse(inputs.correctedFindings!).findings as { id: string; specialistType: string; outcome: string }[];
+          const wathq = findings.find((finding) => finding.specialistType === "Wathq company verification")!;
+          const flaggedIds = findings.filter((finding) => finding.outcome !== "pass").map((finding) => finding.id);
+          expect(wathq.outcome).toBe("human_review");
+          return { runId: "final-human", output: JSON.stringify({ outcome: "Refer", riskGrade: null, indicativeProfitRate: null, missingGradeInputs: ["buyer_quality"], decisionAuthority: "Credit analyst reviews the flagged checks", authorityClause: "SME-CP-07 §7.1", reasons: [{ clause: "SME-CP-07 §4.5", conclusion: "Refer for analyst review of malformed evidence and the disputed invoice.", evidence: "The reviewer could not verify the CR evidence and the invoice finding requires referral.", findingIds: flaggedIds }], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1." }) };
+        }
+        return delegate.runInteraction(name, inputs);
+      },
+    };
+    const app = testApp(mongo.db, { ai });
+    const started = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
+    await vi.waitFor(async () => expect((await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`)).body.status).toBe("completed"));
+    const finished = await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`).expect(200);
+    expect(finished.body.specialistFindings.find((finding: { specialistType: string }) => finding.specialistType === "Wathq company verification")).toMatchObject({ outcome: "human_review", plainLanguageFinding: "The CR evidence is malformed and requires analyst review." });
+    expect(finished.body.reviewerChallenges).toContainEqual(expect.objectContaining({ specialistType: "Wathq company verification", status: "human_review" }));
+    expect(finished.body.finalRecommendation.outcome).toBe("Refer");
+  });
+  it("atomically rejects a second running assessment before another specialist workflow starts", async () => {
+    await seedSourcePack();
+    let releaseFirst!: () => void;
+    const firstInteraction = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const delegate = scriptedAi();
+    const ai: AiRunner = {
+      namespace: "test",
+      async runInteraction(name, inputs) {
+        if (name === "check-simah-credit") await firstInteraction;
+        return delegate.runInteraction(name, inputs);
+      },
+    };
+    const app = testApp(mongo.db, { ai });
+    const first = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
+    await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(409, { error: { code: "conflict", message: "An assessment is already running for this application." } });
+    expect(await mongo.db.collection("applicationCheckRuns").countDocuments({ applicationId: "case-1", status: "running" })).toBe(1);
+    releaseFirst();
+    await vi.waitFor(async () => expect((await request(app).get(`/api/applications/case-1/assessment-runs/${first.body.id}`)).body.status).toBe("completed"));
+  });
   it("rejects a malformed final recommendation before it is persisted", async () => {
     await seedSourcePack();
     const delegate = scriptedAi();
