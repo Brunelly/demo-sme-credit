@@ -6,6 +6,7 @@ import { ConflictError } from "../../errors.ts";
 export const DECISIONS_COLLECTION = "creditDecisions";
 export const decisionIndexes: IndexDescription[] = [
   { key: { applicationId: 1, recordedAt: 1, _id: 1 }, name: "decisions_application_history" },
+  { key: { status: 1, recordedAt: -1, _id: -1 }, name: "decisions_weekly_throughput" },
   { key: { applicationId: 1, ledgerSlot: 1 }, name: "decisions_one_per_sequence", unique: true, partialFilterExpression: { ledgerSlot: { $exists: true } } },
 ];
 interface DecisionDocument extends Omit<DecisionRecord, "id"> { _id: string; ledgerSlot?: number }
