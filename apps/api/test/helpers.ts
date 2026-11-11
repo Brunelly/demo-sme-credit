@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import type { Express } from "express";
 import { MongoClient, type Db } from "mongodb";
 import { afterAll, beforeAll, beforeEach, inject } from "vitest";
@@ -39,7 +39,15 @@ export function useTestDatabase(): { readonly db: Db } {
 }
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
-  return { ...loadConfig({}), ...overrides };
+  return { ...loadConfig({}), platformAuthSecret: "test-platform-auth-secret", ...overrides };
+}
+
+/** A cryptographically valid but obviously fake platform identity for API tests. */
+export function platformToken(profileId: "maha-alotaibi" | "faisal-alqahtani" | "noura-alharbi", subject: string, role: "relationship_manager" | "credit_analyst" | "senior_credit_officer" | "credit_committee" = "credit_analyst"): string {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ sub: subject, profileId, role, iss: "brunelly-platform", aud: "sme-credit-desk", exp: Math.floor(Date.now() / 1000) + 300 })).toString("base64url");
+  const signature = createHmac("sha256", "test-platform-auth-secret").update(`${header}.${payload}`).digest("base64url");
+  return `${header}.${payload}.${signature}`;
 }
 
 /**

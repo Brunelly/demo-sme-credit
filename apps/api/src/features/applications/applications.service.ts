@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ApplicationCheckRun, AssessmentStep, CreditRecommendation, OverrideReason, RecommendationOutcome, ReviewerChallenge, SimulatedScenario, SpecialistFinding, SpecialistType } from "@app/contracts";
+import type { ApplicationCheckRun, AssessmentStep, CreditRecommendation, ReviewerChallenge, SimulatedScenario, SpecialistFinding, SpecialistType } from "@app/contracts";
 import { z } from "zod";
 import { AI_NOT_CONNECTED, type AiRunner } from "../../ai/maitento.ts";
 import type { LongRunningWork } from "../../db/long-running.ts";
@@ -113,13 +113,6 @@ export class ApplicationsService {
         await this.checks.fail(runId, held, activeStep.key, reason, at);
       }
     }
-  }
-  async recordOverride(applicationId: string, runId: string, input: { outcome: RecommendationOutcome; reason: OverrideReason; rationale: string }) {
-    if (input.outcome === "Decline") throw new ValidationError("A decline override must be recorded in the review queue so the decision ledger and four-eyes control apply.");
-    await this.requireApplication(applicationId);
-    const updated = await this.checks.recordOverride(applicationId, runId, { ...input, recordedAt: new Date().toISOString(), recordedBy: "Credit analyst" });
-    if (!updated) throw new NotFoundError("The completed assessment run was not found.");
-    return updated;
   }
   private async requireApplication(id: string) { const item = await this.repository.find(id); if (!item) throw new NotFoundError("The financing application was not found."); return item; }
   private async requireHeld(value: boolean) { if (!value) throw new ConflictError("This assessment is no longer held by the current process."); }

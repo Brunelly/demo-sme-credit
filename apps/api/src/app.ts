@@ -21,6 +21,7 @@ import { apiNotFound, errorHandler } from "./http/error-handler.ts";
 import { requestLogger } from "./http/request-logger.ts";
 import { RESERVED_PREFIX, reservedPaths } from "./http/reserved.ts";
 import { webApp } from "./http/web-app.ts";
+import { requirePlatformIdentity } from "./http/platform-auth.ts";
 
 export interface AppDependencies {
   config: Config;
@@ -58,7 +59,7 @@ export function createApp({ config, db, ai, longRunning, webDistDir }: AppDepend
   api.use("/health", healthRoutes(db, ai));
   api.use("/assistant", assistantRoutes(assistant));
   api.use("/applications", applicationsRoutes(applications));
-  api.use("/reviews", reviewsRoutes(new ReviewsService(new ReviewsRepository(db))));
+  api.use("/reviews", reviewsRoutes(new ReviewsService(new ReviewsRepository(db)), requirePlatformIdentity(config.platformAuthSecret)));
   api.use("/dashboard", dashboardRoutes(new DashboardService(new DashboardRepository(db))));
   api.use(apiNotFound);
   app.use("/api", api);

@@ -15,6 +15,7 @@ export type ErrorCode =
   | "not_found"
   | "conflict"
   | "unauthorized"
+  | "forbidden"
   | "payload_too_large"
   | "reserved_path"
   | "ai_failed"
