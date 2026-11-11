@@ -8,6 +8,7 @@ const translations = {
   "SME Credit Desk": "مكتب ائتمان المنشآت الصغيرة والمتوسطة",
   Applications: "الطلبات",
   "Review queue": "قائمة المراجعة",
+  "Team throughput": "إنتاجية الفريق",
   "UI kit": "مكتبة الواجهة",
   "Application queue": "قائمة الطلبات",
   "Oldest applications first": "الطلبات الأقدم أولاً",
