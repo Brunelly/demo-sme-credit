@@ -20,6 +20,11 @@ describe("routing", () => {
     expect(response.body.error.code).toBe("not_found");
   });
 
+  it("does not expose in-app scenario settings endpoints", async () => {
+    await request(testApp(mongo.db)).get("/api/settings/simulated-scenario").expect(404);
+    await request(testApp(mongo.db)).put("/api/settings/simulated-scenario").send({ activeScenarioId: "clean" }).expect(404);
+  });
+
   it("never handles /__brunelly/, the platform's reserved path", async () => {
     for (const url of ["/__brunelly", "/__brunelly/", "/__brunelly/auth/callback"]) {
       const response = await request(testApp(mongo.db)).get(url).expect(404);
@@ -58,6 +63,8 @@ describe("serving the web app in production", () => {
   });
 
   it("doesn't serve the web app outside production", async () => {
-    await request(testApp(mongo.db, { webDistDir: dist })).get("/").expect(404);
+    await request(testApp(mongo.db, { webDistDir: dist }))
+      .get("/")
+      .expect(404);
   });
 });

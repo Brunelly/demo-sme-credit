@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { SimulatedScenario } from "@app/contracts";
 
 // The environment contract (see .env.example). This is the ONLY place the app reads process.env (logger.ts reads
 // LOG_LEVEL itself, before a Config exists): everything else takes a Config. Add a new setting here, to .env.example
@@ -33,7 +34,7 @@ export interface Config {
   publicUrl: string;
   mongodb: { uri: string; database: string };
   maitento: { baseUrl: string | undefined; apiKey: string | undefined; namespace: string | undefined };
-  simulatedDataScenario: "clean" | "disputed_invoice" | "low_bureau" | "returned_cheques";
+  simulatedDataScenario: SimulatedScenario;
 }
 
 export class ConfigError extends Error {}

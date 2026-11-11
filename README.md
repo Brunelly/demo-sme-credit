@@ -60,6 +60,7 @@ The app reads these environment variables and nothing else (`apps/api/src/config
 | `MAITENTO_BASE_URL` | the Maitento API | `https://api.maitento.com` |
 | `MAITENTO_API_KEY` | the app's Maitento key, `<user id>:<secret>` | none: AI features answer "AI not connected" |
 | `MAITENTO_NAMESPACE` | where `maitento/` is deployed and runs | none |
+| `SIMULATED_DATA_SCENARIO` | control-centre scenario for each new simulated assessment | `clean` |
 
 ## How it's built
 

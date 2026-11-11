@@ -8,7 +8,6 @@ const translations = {
   "SME Credit Desk": "مكتب ائتمان المنشآت الصغيرة والمتوسطة",
   Applications: "الطلبات",
   "Review queue": "قائمة المراجعة",
-  Settings: "الإعدادات",
   "UI kit": "مكتبة الواجهة",
   "Application queue": "قائمة الطلبات",
   "Oldest applications first": "الطلبات الأقدم أولاً",
@@ -23,8 +22,6 @@ const translations = {
   "Selected application workspace": "مساحة عمل الطلب المحدد",
   "Select an application.": "اختر طلباً.",
   Facility: "التسهيل",
-  "Active scenario": "السيناريو النشط",
-  "Global setting · recorded per run": "إعداد عام · يُسجل لكل تشغيل",
   "Buyer quality": "تصنيف المشتري",
   "Not applicable": "لا ينطبق",
   "Assessment trail": "سجل التقييم",
@@ -40,10 +37,6 @@ const translations = {
   "Sample review data": "بيانات مراجعة تجريبية",
   "These cases are illustrative and labelled for the demonstration.": "هذه الحالات توضيحية وموسومة لأغراض العرض.",
   "Oldest received first": "الأقدم استلاماً أولاً",
-  "Control-centre settings": "إعدادات مركز التحكم",
-  "Manage the simulated source data used by every subsequent assessment.": "إدارة بيانات المصادر المحاكية المستخدمة في كل تقييم لاحق.",
-  "Simulated assessment scenario": "سيناريو التقييم المحاكى",
-  "Save scenario": "حفظ السيناريو",
   "Use dark theme": "استخدام النسق الداكن",
   "Use light theme": "استخدام النسق الفاتح",
 } as const;
@@ -79,16 +72,21 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem("rasikh-locale", locale);
       localStorage.setItem("rasikh-theme", theme);
-    } catch { /* Preferences still apply when storage is unavailable. */ }
+    } catch {
+      /* Preferences still apply when storage is unavailable. */
+    }
   }, [locale, theme]);
 
-  const value = useMemo<PreferencesValue>(() => ({
-    locale,
-    theme,
-    setLocale,
-    setTheme,
-    t: (text) => locale === "ar" ? translations[text as TranslationKey] ?? text : text,
-  }), [locale, theme]);
+  const value = useMemo<PreferencesValue>(
+    () => ({
+      locale,
+      theme,
+      setLocale,
+      setTheme,
+      t: (text) => (locale === "ar" ? (translations[text as TranslationKey] ?? text) : text),
+    }),
+    [locale, theme],
+  );
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
 }

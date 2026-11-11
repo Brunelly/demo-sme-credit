@@ -10,10 +10,7 @@ import { ApplicationsRepository } from "./features/applications/applications.rep
 import { ApplicationsService } from "./features/applications/applications.service.ts";
 import { applicationsRoutes } from "./features/applications/applications.routes.ts";
 import { APPLICATION_CHECK_RUNS_COLLECTION, ApplicationChecksRepository } from "./features/applications/application-checks.repository.ts";
-import { SimulatedScenarioRepository } from "./features/applications/simulated-scenario.repository.ts";
 import { SimulatedSourcesRepository } from "./features/applications/simulated-sources.repository.ts";
-import { SettingsService } from "./features/settings/settings.service.ts";
-import { settingsRoutes } from "./features/settings/settings.routes.ts";
 import { ReviewsRepository } from "./features/reviews/reviews.repository.ts";
 import { ReviewsService } from "./features/reviews/reviews.service.ts";
 import { reviewsRoutes } from "./features/reviews/reviews.routes.ts";
@@ -53,9 +50,8 @@ export function createApp({ config, db, ai, longRunning, webDistDir }: AppDepend
   // Work that outlives its request (a background AI run, an import) also registers its collection, and its service
   // takes `longRunning` to lease each run: longRunning.register({ collection: REPORTS_COLLECTION }). See db/long-running.ts.
   const assistant = new AssistantService(ai);
-  const scenarios = new SimulatedScenarioRepository(db, config.simulatedDataScenario);
   const checks = new ApplicationChecksRepository(db);
-  const applications = new ApplicationsService(new ApplicationsRepository(db), checks, scenarios, new SimulatedSourcesRepository(db), ai, longRunning);
+  const applications = new ApplicationsService(new ApplicationsRepository(db), checks, config.simulatedDataScenario, new SimulatedSourcesRepository(db), ai, longRunning);
   longRunning.register({ collection: APPLICATION_CHECK_RUNS_COLLECTION });
 
   const api = express.Router();
@@ -64,7 +60,6 @@ export function createApp({ config, db, ai, longRunning, webDistDir }: AppDepend
   api.use("/applications", applicationsRoutes(applications));
   api.use("/reviews", reviewsRoutes(new ReviewsService(new ReviewsRepository(db))));
   api.use("/dashboard", dashboardRoutes(new DashboardService(new DashboardRepository(db))));
-  api.use("/settings", settingsRoutes(new SettingsService(scenarios)));
   api.use(apiNotFound);
   app.use("/api", api);
 
