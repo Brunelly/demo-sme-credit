@@ -14,8 +14,10 @@ export interface ListApplicationsResponse { items: CreditApplication[]; sampleDa
 export const simulatedScenarioSchema = z.enum(["clean", "disputed_invoice", "low_bureau", "returned_cheques"]);
 export type SimulatedScenario = z.infer<typeof simulatedScenarioSchema>;
 export const recommendationOutcomeSchema = z.enum(["Approve", "Refer", "Decline"]);
+export const decisionAuthoritySchema = z.enum(["Credit analyst confirms", "Senior credit officer", "Credit analyst reviews the flagged checks", "Credit analyst, then a second analyst (four eyes)", "Credit committee"]);
 export const overrideReasonSchema = z.enum(["Additional collateral or guarantee provided", "Information not available to the assessment", "Relationship history with the Bank", "Data quality issue in a source check", "Sector or market conditions"]);
 export type RecommendationOutcome = z.infer<typeof recommendationOutcomeSchema>;
+export type DecisionAuthority = z.infer<typeof decisionAuthoritySchema>;
 export type OverrideReason = z.infer<typeof overrideReasonSchema>;
 export type SpecialistType = "SIMAH credit bureau" | "Wathq company verification" | "ZATCA e-invoice verification" | "Open banking cash flow";
 export interface FindingEvidence { fact: string; sourceReference: string }
@@ -35,7 +37,7 @@ export interface CreditRecommendation {
   outcome: RecommendationOutcome; riskGrade: "A" | "B" | "C" | "D" | null; indicativeProfitRate: string | null;
   /** Inputs the policy needs before assigning a grade. Empty when a grade is assigned; optional on historical records. */
   missingGradeInputs?: MissingGradeInput[];
-  decisionAuthority: string; authorityClause: "SME-CP-07 §7.1"; reasons: RecommendationReason[];
+  decisionAuthority: DecisionAuthority; authorityClause: "SME-CP-07 §7.1"; reasons: RecommendationReason[];
   notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1."; createdAt: string;
   /** Chronological, append-only analyst override audit trail. */
   overrides?: RecommendationOverride[];
