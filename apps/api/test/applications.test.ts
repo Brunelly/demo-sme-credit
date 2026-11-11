@@ -1,6 +1,7 @@
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import type { AiRunner } from "../src/ai/maitento.ts";
+import { RUN_TIMEOUT_MS } from "../src/ai/maitento.ts";
 import { buildSpecialistPromptPayload, validateRecommendationCitations } from "../src/features/applications/applications.service.ts";
 import { testApp, useTestDatabase } from "./helpers.ts";
 
@@ -41,6 +42,9 @@ async function seedSourcePack(scenarioId = "clean") {
 }
 
 describe("traceable Maitento assessments", () => {
+  it("allows Maitento interactions to use their declared two-minute maximum", () => {
+    expect(RUN_TIMEOUT_MS).toBe(120_000);
+  });
   it("passes only one assigned simulated source to a specialist", () => {
     const payload = buildSpecialistPromptPayload(sources["SIMAH credit bureau"], "SIMAH credit bureau");
     expect(JSON.parse(payload.sourceData)).toEqual({ assignedSource: "SIMAH credit bureau", simulated: true, source: { score: 714 } });
@@ -66,6 +70,30 @@ describe("traceable Maitento assessments", () => {
     expect(finished.body.revisedFindings).toHaveLength(1);
     expect(finished.body.steps.every((step: { status: string }) => step.status === "completed")).toBe(true);
     expect(validateRecommendationCitations(finished.body.finalRecommendation)).toBe(true);
+  });
+  it("marks a run interrupted when ownership changes before its recommendation is saved", async () => {
+    await seedSourcePack();
+    const ai = scriptedAi();
+    const baseRunInteraction = ai.runInteraction.bind(ai);
+    ai.runInteraction = async (name, inputs) => {
+      const result = await baseRunInteraction(name, inputs);
+      if (name === "prepare-final-recommendation") {
+        await mongo.db.collection("applicationCheckRuns").updateOne(
+          { status: "running" },
+          { $set: { "lease.owner": "replacement-process" } },
+        );
+      }
+      return result;
+    };
+    const app = testApp(mongo.db, { ai });
+    const started = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
+    await vi.waitFor(async () => expect((await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`)).body.status).toBe("interrupted"));
+    const interrupted = await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`).expect(200);
+    expect(interrupted.body).toMatchObject({
+      status: "interrupted",
+      finalRecommendation: null,
+      interruptedReason: "Assessment ownership changed before this stage could be saved. Start a new assessment.",
+    });
   });
   it("uses only the control-centre scenario for all four sources and snapshots it on each run", async () => {
     await seedSourcePack("clean");
