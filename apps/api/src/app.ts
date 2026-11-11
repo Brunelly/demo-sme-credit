@@ -17,6 +17,9 @@ import { settingsRoutes } from "./features/settings/settings.routes.ts";
 import { ReviewsRepository } from "./features/reviews/reviews.repository.ts";
 import { ReviewsService } from "./features/reviews/reviews.service.ts";
 import { reviewsRoutes } from "./features/reviews/reviews.routes.ts";
+import { DashboardRepository } from "./features/dashboard/dashboard.repository.ts";
+import { DashboardService } from "./features/dashboard/dashboard.service.ts";
+import { dashboardRoutes } from "./features/dashboard/dashboard.routes.ts";
 import { apiNotFound, errorHandler } from "./http/error-handler.ts";
 import { requestLogger } from "./http/request-logger.ts";
 import { RESERVED_PREFIX, reservedPaths } from "./http/reserved.ts";
@@ -60,6 +63,7 @@ export function createApp({ config, db, ai, longRunning, webDistDir }: AppDepend
   api.use("/assistant", assistantRoutes(assistant));
   api.use("/applications", applicationsRoutes(applications));
   api.use("/reviews", reviewsRoutes(new ReviewsService(new ReviewsRepository(db))));
+  api.use("/dashboard", dashboardRoutes(new DashboardService(new DashboardRepository(db))));
   api.use("/settings", settingsRoutes(new SettingsService(scenarios)));
   api.use(apiNotFound);
   app.use("/api", api);

@@ -5,3 +5,4 @@ export * from "./health.ts";
 export * from "./assistant.ts";
 export * from "./applications.ts";
 export * from "./reviews.ts";
+export * from "./dashboard.ts";
