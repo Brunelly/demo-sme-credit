@@ -11,6 +11,7 @@ export const analystIdentities = [
 export const analystIdentityIdSchema = z.enum(["maha-alotaibi", "faisal-alqahtani", "noura-alharbi"]);
 export type AnalystIdentityId = z.infer<typeof analystIdentityIdSchema>;
 export const recordDecisionSchema = z.object({
+  assessmentRunId: z.string().trim().min(1),
   analystIdentityId: analystIdentityIdSchema,
   expectedSequence: z.union([z.literal(1), z.literal(2)]),
   decision: analystDecisionSchema,
@@ -24,13 +25,13 @@ export const recordDecisionSchema = z.object({
 });
 
 export interface DecisionRecord {
-  id: string; applicationId: string; analystId: string; analystName: string; decision: AnalystDecision;
+  id: string; applicationId: string; assessmentRunId: string; analystId: string; analystName: string; decision: AnalystDecision;
   effectiveOutcome: RecommendationOutcome; notes: string; overrideReason?: OverrideReason;
   recordedAt: string; status: "recorded" | "awaiting_second_analyst" | "final";
   sequence: 1 | 2;
 }
 export interface ReviewQueueItem {
-  application: CreditApplication; recommendation: CreditRecommendation; authority: string;
+  application: CreditApplication; assessmentRunId: string; recommendation: CreditRecommendation; authority: string;
   authorityClause: "SME-CP-07 §7.1"; decisions: DecisionRecord[]; queueStatus: "awaiting_decision" | "awaiting_second_analyst";
 }
 export interface ReviewQueueResponse { items: ReviewQueueItem[]; sampleData: boolean }

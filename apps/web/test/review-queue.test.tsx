@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { mockApi, renderAt, status } from "./helpers.tsx";
 
-const item = { application: { id: "app-1007", businessName: "Al Nakhil Packaging", businessNameArabic: "تغليف النخيل", commercialRegistration: "1010842763", product: "working_capital", amountSar: 1850000, stage: "decision_required", receivedAt: "2026-11-04T08:20:00.000Z", city: "Riyadh", riskGrade: "D" }, recommendation: { outcome: "Decline", riskGrade: "D", indicativeProfitRate: null, decisionAuthority: "Credit analyst, then a second analyst (four eyes)", authorityClause: "SME-CP-07 §7.1", notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1.", createdAt: "2026-11-11T08:40:00.000Z", reasons: [{ clause: "SME-CP-07 §6", conclusion: "The policy exception supports a decline recommendation.", evidence: "The reviewed bureau finding records elevated risk.", findingIds: [] }] }, authority: "Credit analyst, then a second analyst (four eyes)", authorityClause: "SME-CP-07 §7.1", decisions: [], queueStatus: "awaiting_decision" };
+const item = { application: { id: "app-1007", businessName: "Al Nakhil Packaging", businessNameArabic: "تغليف النخيل", commercialRegistration: "1010842763", product: "working_capital", amountSar: 1850000, stage: "decision_required", receivedAt: "2026-11-04T08:20:00.000Z", city: "Riyadh", riskGrade: "D" }, assessmentRunId: "run-1007", recommendation: { outcome: "Decline", riskGrade: "D", indicativeProfitRate: null, decisionAuthority: "Credit analyst, then a second analyst (four eyes)", authorityClause: "SME-CP-07 §7.1", notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1.", createdAt: "2026-11-11T08:40:00.000Z", reasons: [{ clause: "SME-CP-07 §6", conclusion: "The policy exception supports a decline recommendation.", evidence: "The reviewed bureau finding records elevated risk.", findingIds: [] }] }, authority: "Credit analyst, then a second analyst (four eyes)", authorityClause: "SME-CP-07 §7.1", decisions: [], queueStatus: "awaiting_decision" };
 
 describe("analyst review queue", () => {
   it("shows authority and records an Appendix A override with analyst and notes", async () => {
@@ -17,7 +17,7 @@ describe("analyst review queue", () => {
     await userEvent.selectOptions(screen.getByLabelText("Appendix A reason"), "Relationship history with the Bank");
     await userEvent.type(screen.getByLabelText("Reason and notes"), "Documented repayment history supports approval.");
     await userEvent.click(screen.getByRole("button", { name: "Record override" }));
-    expect(api.calls).toContainEqual({ method: "POST", path: "/api/reviews/app-1007/decisions", search: "", body: { analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "override", notes: "Documented repayment history supports approval.", overrideReason: "Relationship history with the Bank", overrideOutcome: "Approve" } });
+    expect(api.calls).toContainEqual({ method: "POST", path: "/api/reviews/app-1007/decisions", search: "", body: { assessmentRunId: "run-1007", analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "override", notes: "Documented repayment history supports approval.", overrideReason: "Relationship history with the Bank", overrideOutcome: "Approve" } });
   });
 
   it("locks a pending decline to an independent decline review", async () => {

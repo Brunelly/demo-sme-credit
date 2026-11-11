@@ -12,11 +12,13 @@ interface ApplicationDocument {
 interface DecisionDocument {
   _id: string;
   applicationId: string;
+  assessmentRunId?: string;
   effectiveOutcome: RecommendationOutcome;
   recordedAt: string;
   status: string;
 }
 interface RunDocument {
+  _id: string;
   applicationId: string;
   status: string;
   startedAt?: string;
@@ -41,9 +43,10 @@ export class DashboardRepository {
     for (const decision of rows) {
       const application = await this.db.collection<ApplicationDocument>("applications").findOne({ _id: decision.applicationId });
       if (!application) continue;
-      const run = await this.db.collection<RunDocument>("applicationCheckRuns")
-        .find({ applicationId: decision.applicationId, $or: [{ status: "completed" }, { recommendation: { $exists: true } }] })
-        .sort({ startedAt: -1, performedAt: -1, _id: -1 } as never).limit(1).next();
+      const runs = this.db.collection<RunDocument>("applicationCheckRuns");
+      const run = decision.assessmentRunId
+        ? await runs.findOne({ _id: decision.assessmentRunId, applicationId: decision.applicationId })
+        : await runs.find({ applicationId: decision.applicationId, $or: [{ status: "completed" }, { recommendation: { $exists: true } }] }).sort({ startedAt: -1, performedAt: -1, _id: -1 } as never).limit(1).next();
       const recommendation = run?.finalRecommendation ?? run?.recommendation;
       const decidedAt = new Date(decision.recordedAt);
       results.push({
