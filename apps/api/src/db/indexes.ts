@@ -1,5 +1,6 @@
 import type { Db, IndexDescription } from "mongodb";
 import { logger } from "../logger.ts";
+import { APPLICATIONS_COLLECTION, applicationIndexes } from "../features/applications/applications.repository.ts";
 
 /**
  * Every index the app needs, by collection. INDEXES ARE CODE, NOT MIGRATIONS: each repository declares the indexes
@@ -11,7 +12,9 @@ import { logger } from "../logger.ts";
  * work also gets the lease index (LEASE_INDEX), from db/long-running.ts: don't list that one here.
  */
 // e.g. [ORDERS_COLLECTION]: orderIndexes, with the array exported from features/orders/orders.repository.ts.
-export const INDEXES: Record<string, IndexDescription[]> = {};
+export const INDEXES: Record<string, IndexDescription[]> = {
+  [APPLICATIONS_COLLECTION]: applicationIndexes,
+};
 
 /** MongoDB's codes for "an index with this name or these keys already exists, with other options". */
 const INDEX_CONFLICT_CODES = new Set([85, 86]);

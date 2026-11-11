@@ -28,9 +28,9 @@
   gap: var(--space-6);
   height: var(--topbar-height);
   padding: 0 var(--space-6);
-  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
-  backdrop-filter: saturate(1.4) blur(8px);
-  border-bottom: var(--border-width) solid var(--color-border);
+  background: var(--color-brand);
+  border-bottom: var(--border-width) solid var(--color-brand-active);
+  color: var(--color-on-brand);
 }
 
 .brand {
@@ -46,7 +46,8 @@
   width: 28px;
   height: 28px;
   border-radius: var(--radius-md);
-  background: var(--color-brand);
+  background: var(--color-on-brand);
+  color: var(--color-brand);
   color: var(--color-on-brand);
   font-weight: var(--weight-bold);
   font-size: var(--text-sm);
@@ -60,8 +61,8 @@
 
 .product {
   padding-left: var(--space-2);
-  border-left: var(--border-width) solid var(--color-border);
-  color: var(--color-text-muted);
+  border-left: var(--border-width) solid var(--color-on-brand);
+  color: var(--color-on-brand);
   font-weight: var(--weight-medium);
 }
 
