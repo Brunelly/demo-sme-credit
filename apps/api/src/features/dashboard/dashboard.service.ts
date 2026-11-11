@@ -19,24 +19,22 @@ export class DashboardService {
     const { start, end } = weekBounds(this.now());
     const [applicationsReceived, decisions, sampleData] = await Promise.all([
       this.repository.countApplications(start, end),
-      this.repository.listFinalDecisions(start, end),
+      this.repository.summarizeFinalDecisions(start, end),
       this.repository.isSampleData(),
     ]);
     const outcomes = {
-      approvals: decisions.filter((item) => item.outcome === "Approve").length,
-      referrals: decisions.filter((item) => item.outcome === "Refer").length,
-      declines: decisions.filter((item) => item.outcome === "Decline").length,
+      approvals: decisions.approvals,
+      referrals: decisions.referrals,
+      declines: decisions.declines,
     };
-    const overrideCount = decisions.filter((item) => item.overridden).length;
-    const average = decisions.length ? decisions.reduce((sum, item) => sum + item.turnaroundHours, 0) / decisions.length : null;
     return {
       period: { start: start.toISOString(), end: end.toISOString(), label: "This week · Monday to Sunday" },
       applicationsReceived,
-      decisionsCompleted: decisions.length,
-      averageTurnaroundHours: average,
+      decisionsCompleted: decisions.decisionsCompleted,
+      averageTurnaroundHours: decisions.averageTurnaroundHours,
       outcomes,
-      override: { count: overrideCount, eligibleDecisions: decisions.length, ratePercent: decisions.length ? overrideCount / decisions.length * 100 : null },
-      recentDecisions: decisions.slice(0, 8),
+      override: { count: decisions.overrideCount, eligibleDecisions: decisions.decisionsCompleted, ratePercent: decisions.decisionsCompleted ? decisions.overrideCount / decisions.decisionsCompleted * 100 : null },
+      recentDecisions: decisions.recentDecisions,
       sampleData,
     };
   }

@@ -19,18 +19,13 @@ export class ReviewsRepository {
 
   async list(): Promise<{ items: ReviewQueueItem[]; sampleData: boolean }> {
     const applications = await this.db.collection<ApplicationDocument>("applications").find({ stage: { $in: ["decision_required", "referred"] } }).sort({ receivedAt: 1, _id: 1 }).limit(50).toArray();
-    const items: ReviewQueueItem[] = [];
-    for (const row of applications) {
-      const run = await this.db.collection<RunDocument>("applicationCheckRuns").find({ applicationId: row._id, $or: [{ status: "completed" }, { recommendation: { $exists: true } }] }).sort({ startedAt: -1, performedAt: -1, _id: -1 } as never).limit(1).next();
-      const recommendation = run?.finalRecommendation ?? run?.recommendation;
-      if (!run || !recommendation) continue;
-      const decisions = await this.listDecisions(row._id, run._id);
-      const pending = decisions.at(-1)?.status === "awaiting_second_analyst";
-      if (decisions.some((decision) => decision.status === "final") && !pending) continue;
-      const { _id, receivedAt, sampleData: _sampleData, ...application } = row;
-      items.push({ application: { id: _id, receivedAt: receivedAt.toISOString(), ...application }, assessmentRunId: run._id, recommendation, authority: recommendation.decisionAuthority, authorityClause: "SME-CP-07 §7.1", decisions, queueStatus: pending ? "awaiting_second_analyst" : "awaiting_decision" });
-    }
+    const items = (await Promise.all(applications.map((row) => this.toQueueItem(row)))).filter((item): item is ReviewQueueItem => item !== null);
     return { items, sampleData: applications.length > 0 && applications.every((item) => item.sampleData) };
+  }
+
+  async findAwaitingDecision(applicationId: string): Promise<ReviewQueueItem | null> {
+    const application = await this.db.collection<ApplicationDocument>("applications").findOne({ _id: applicationId, stage: { $in: ["decision_required", "referred"] } });
+    return application ? this.toQueueItem(application) : null;
   }
 
   async listDecisions(applicationId: string, assessmentRunId: string): Promise<DecisionRecord[]> {
@@ -48,5 +43,16 @@ export class ReviewsRepository {
       }
       throw error;
     }
+  }
+
+  private async toQueueItem(row: ApplicationDocument): Promise<ReviewQueueItem | null> {
+    const run = await this.db.collection<RunDocument>("applicationCheckRuns").find({ applicationId: row._id, $or: [{ status: "completed" }, { recommendation: { $exists: true } }] }).sort({ startedAt: -1, performedAt: -1, _id: -1 } as never).limit(1).next();
+    const recommendation = run?.finalRecommendation ?? run?.recommendation;
+    if (!run || !recommendation) return null;
+    const decisions = await this.listDecisions(row._id, run._id);
+    const pending = decisions.at(-1)?.status === "awaiting_second_analyst";
+    if (decisions.some((decision) => decision.status === "final") && !pending) return null;
+    const { _id, receivedAt, sampleData: _sampleData, ...application } = row;
+    return { application: { id: _id, receivedAt: receivedAt.toISOString(), ...application }, assessmentRunId: run._id, recommendation, authority: recommendation.decisionAuthority, authorityClause: "SME-CP-07 §7.1", decisions, queueStatus: pending ? "awaiting_second_analyst" : "awaiting_decision" };
   }
 }

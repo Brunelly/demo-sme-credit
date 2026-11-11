@@ -1,4 +1,4 @@
-import type { CreditRecommendation, RecentThroughputDecision, RecommendationOutcome } from "@app/contracts";
+import type { RecentThroughputDecision, RecommendationOutcome } from "@app/contracts";
 import type { Db } from "mongodb";
 
 interface ApplicationDocument {
@@ -17,14 +17,14 @@ interface DecisionDocument {
   recordedAt: string;
   status: string;
 }
-interface RunDocument {
-  _id: string;
-  applicationId: string;
-  status: string;
-  startedAt?: string;
-  performedAt?: Date;
-  finalRecommendation?: CreditRecommendation;
-  recommendation?: CreditRecommendation;
+export interface WeeklyDecisionSummary {
+  decisionsCompleted: number;
+  averageTurnaroundHours: number | null;
+  approvals: number;
+  referrals: number;
+  declines: number;
+  overrideCount: number;
+  recentDecisions: RecentThroughputDecision[];
 }
 
 export class DashboardRepository {
@@ -35,34 +35,67 @@ export class DashboardRepository {
     return this.db.collection<ApplicationDocument>("applications").countDocuments({ receivedAt: { $gte: start, $lt: end } });
   }
 
-  async listFinalDecisions(start: Date, end: Date): Promise<RecentThroughputDecision[]> {
-    const rows = await this.db.collection<DecisionDocument>("creditDecisions")
-      .find({ status: "final", recordedAt: { $gte: start.toISOString(), $lt: end.toISOString() } })
-      .sort({ recordedAt: -1, _id: -1 }).limit(50).toArray();
-    const results: RecentThroughputDecision[] = [];
-    for (const decision of rows) {
-      const application = await this.db.collection<ApplicationDocument>("applications").findOne({ _id: decision.applicationId });
-      if (!application) continue;
-      const runs = this.db.collection<RunDocument>("applicationCheckRuns");
-      const run = decision.assessmentRunId
-        ? await runs.findOne({ _id: decision.assessmentRunId, applicationId: decision.applicationId })
-        : await runs.find({ applicationId: decision.applicationId, $or: [{ status: "completed" }, { recommendation: { $exists: true } }] }).sort({ startedAt: -1, performedAt: -1, _id: -1 } as never).limit(1).next();
-      const recommendation = run?.finalRecommendation ?? run?.recommendation;
-      const decidedAt = new Date(decision.recordedAt);
-      results.push({
-        id: decision._id,
-        applicationId: decision.applicationId,
-        businessName: application.businessName,
-        product: application.product,
-        amountSar: application.amountSar,
-        outcome: decision.effectiveOutcome,
-        receivedAt: application.receivedAt.toISOString(),
-        decidedAt: decidedAt.toISOString(),
-        turnaroundHours: Math.max(0, (decidedAt.getTime() - application.receivedAt.getTime()) / 3_600_000),
-        overridden: Boolean(recommendation && recommendation.outcome !== decision.effectiveOutcome),
-      });
-    }
-    return results;
+  async summarizeFinalDecisions(start: Date, end: Date): Promise<WeeklyDecisionSummary> {
+    type AggregationResult = { metrics: Omit<WeeklyDecisionSummary, "recentDecisions">[]; recentDecisions: RecentThroughputDecision[] };
+    const [result] = await this.db.collection<DecisionDocument>("creditDecisions").aggregate<AggregationResult>([
+      { $match: { status: "final", recordedAt: { $gte: start.toISOString(), $lt: end.toISOString() } } },
+      { $lookup: { from: "applications", localField: "applicationId", foreignField: "_id", as: "application" } },
+      { $unwind: "$application" },
+      { $lookup: {
+        from: "applicationCheckRuns",
+        let: { applicationId: "$applicationId", assessmentRunId: "$assessmentRunId" },
+        pipeline: [
+          { $match: { $expr: { $and: [
+            { $eq: ["$applicationId", "$$applicationId"] },
+            { $cond: [
+              { $ne: [{ $ifNull: ["$$assessmentRunId", null] }, null] },
+              { $eq: ["$_id", "$$assessmentRunId"] },
+              { $or: [{ $eq: ["$status", "completed"] }, { $ne: [{ $type: "$recommendation" }, "missing"] }] },
+            ] },
+          ] } } },
+          { $sort: { startedAt: -1, performedAt: -1, _id: -1 } },
+          { $limit: 1 },
+        ],
+        as: "run",
+      } },
+      { $set: {
+        run: { $first: "$run" },
+        decidedAt: { $convert: { input: "$recordedAt", to: "date", onError: null, onNull: null } },
+      } },
+      { $set: {
+        recommendationOutcome: { $ifNull: ["$run.finalRecommendation.outcome", "$run.recommendation.outcome"] },
+        turnaroundHours: { $max: [0, { $divide: [{ $subtract: ["$decidedAt", "$application.receivedAt"] }, 3_600_000] }] },
+      } },
+      { $set: { overridden: { $and: [
+        { $ne: [{ $ifNull: ["$recommendationOutcome", null] }, null] },
+        { $ne: ["$recommendationOutcome", "$effectiveOutcome"] },
+      ] } } },
+      { $sort: { recordedAt: -1, _id: -1 } },
+      { $facet: {
+        metrics: [{ $group: {
+          _id: null,
+          decisionsCompleted: { $sum: 1 },
+          averageTurnaroundHours: { $avg: "$turnaroundHours" },
+          approvals: { $sum: { $cond: [{ $eq: ["$effectiveOutcome", "Approve"] }, 1, 0] } },
+          referrals: { $sum: { $cond: [{ $eq: ["$effectiveOutcome", "Refer"] }, 1, 0] } },
+          declines: { $sum: { $cond: [{ $eq: ["$effectiveOutcome", "Decline"] }, 1, 0] } },
+          overrideCount: { $sum: { $cond: ["$overridden", 1, 0] } },
+        } }, { $project: { _id: 0 } }],
+        recentDecisions: [
+          { $limit: 8 },
+          { $project: { _id: 0, id: "$_id", applicationId: 1, businessName: "$application.businessName", product: "$application.product", amountSar: "$application.amountSar", outcome: "$effectiveOutcome", receivedAt: { $dateToString: { date: "$application.receivedAt" } }, decidedAt: { $dateToString: { date: "$decidedAt" } }, turnaroundHours: 1, overridden: 1 } },
+        ],
+      } },
+    ]).toArray();
+    return {
+      decisionsCompleted: result?.metrics[0]?.decisionsCompleted ?? 0,
+      averageTurnaroundHours: result?.metrics[0]?.averageTurnaroundHours ?? null,
+      approvals: result?.metrics[0]?.approvals ?? 0,
+      referrals: result?.metrics[0]?.referrals ?? 0,
+      declines: result?.metrics[0]?.declines ?? 0,
+      overrideCount: result?.metrics[0]?.overrideCount ?? 0,
+      recentDecisions: result?.recentDecisions ?? [],
+    };
   }
 
   async isSampleData(): Promise<boolean> {
