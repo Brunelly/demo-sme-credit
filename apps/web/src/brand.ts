@@ -5,6 +5,6 @@ import type { AppBrand } from "@app/ui";
  * and the colours in packages/ui/src/tokens.css.
  */
 export const brand: AppBrand = {
-  name: "Acme",
-  product: "App",
+  name: "Rasikh Bank",
+  product: "SME Credit Desk",
 };
