@@ -43,6 +43,40 @@ describe("traceable Maitento assessments", () => {
     expect(finished.body.specialistFindings).toHaveLength(4); expect(finished.body.revisedFindings).toHaveLength(1); expect(finished.body.steps.every((step: { status: string }) => step.status === "completed")).toBe(true);
     expect(validateRecommendationCitations(finished.body.finalRecommendation)).toBe(true);
   });
+  it("completes a clean case with a verified Approve recommendation", async () => {
+    await seedSourcePack(); const calls: string[] = [];
+    const ai: AiRunner = { namespace: "test", async runInteraction(name, inputs) {
+      calls.push(name);
+      if (name.startsWith("check-")) {
+        const type = JSON.parse(inputs.sourceData!).assignedSource as string;
+        return { runId: `clean-check-${calls.length}`, output: JSON.stringify({ outcome: "pass", plainLanguageFinding: `${type} passed its assigned check.`, sourceLabel: `Assigned ${type} simulated source`, evidence: [{ fact: `Compliant evidence from ${type}`, sourceReference: "source · verified field" }], policyCitations: ["SME-CP-07 §3.1"], revisionSummary: null }) };
+      }
+      if (name === "review-specialist-finding") return { runId: `clean-review-${JSON.parse(inputs.finding!).finding.id}`, output: JSON.stringify({ status: "accepted", conclusion: "Supported by assigned evidence.", evidenceGap: null, reasoningDefect: null, policyCitation: null }) };
+      if (name === "prepare-final-recommendation") {
+        const findings = JSON.parse(inputs.correctedFindings!).findings as { id: string }[];
+        return { runId: "clean-final", output: JSON.stringify({ outcome: "Approve", riskGrade: "B", indicativeProfitRate: "SAIBOR + 3.0%", decisionAuthority: "Credit analyst confirms", authorityClause: "SME-CP-07 §7.1", reasons: [{ clause: "SME-CP-07 §6", conclusion: "Approve because the corrected findings support grade B.", evidence: "The corrected findings record compliant checks and supported cash flow.", findingIds: findings.map(({ id }) => id) }], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1." }) };
+      }
+      throw new Error(`Unexpected clean-case interaction: ${name}`);
+    } };
+    const app = testApp(mongo.db, { ai }); const started = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
+    await vi.waitFor(async () => expect((await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`)).body.status).toBe("completed"));
+    const finished = await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`).expect(200);
+    expect(finished.body.finalRecommendation).toMatchObject({ outcome: "Approve", reasons: [{ clause: "SME-CP-07 §6" }] });
+    expect(validateRecommendationCitations(finished.body.finalRecommendation)).toBe(true);
+    expect(calls).toHaveLength(9); expect(calls.some(name => name.startsWith("rework-"))).toBe(false);
+  });
+  it("rejects a malformed final recommendation before it is persisted", async () => {
+    await seedSourcePack(); const delegate = scriptedAi();
+    const ai: AiRunner = { namespace: "test", async runInteraction(name, inputs) {
+      if (name === "prepare-final-recommendation") return { runId: "malformed-final", output: JSON.stringify({ outcome: "Approve", reasons: [] }) };
+      return delegate.runInteraction(name, inputs);
+    } };
+    const app = testApp(mongo.db, { ai }); const started = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
+    await vi.waitFor(async () => expect((await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`)).body.status).toBe("failed"));
+    const failed = await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`).expect(200);
+    expect(failed.body.failureReason).toBe("Final recommendation assistant failed: The final recommendation assistant returned an answer that could not be verified.");
+    expect(failed.body.finalRecommendation).toBeNull();
+  });
   it("does not fabricate a result when Maitento is not connected", async () => { await seedSourcePack(); await request(testApp(mongo.db)).post("/api/applications/case-1/assessment-runs").send({}).expect(503); expect(await mongo.db.collection("applicationCheckRuns").countDocuments()).toBe(0); });
   it("allows wording to come from each Maitento run", async () => { await seedSourcePack(); const ai = scriptedAi(); const app = testApp(mongo.db, { ai }); const first = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202); await vi.waitFor(() => expect(ai.calls.length).toBe(10)); const second = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202); await vi.waitFor(() => expect(ai.calls.length).toBe(20)); const one = await request(app).get(`/api/applications/case-1/assessment-runs/${first.body.id}`); const two = await request(app).get(`/api/applications/case-1/assessment-runs/${second.body.id}`); expect(one.body.specialistFindings[0].plainLanguageFinding).not.toBe(two.body.specialistFindings[0].plainLanguageFinding); });
   it("shows a safe stage-specific failure and permits a successful rerun", async () => {
