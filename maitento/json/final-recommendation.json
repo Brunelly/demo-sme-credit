@@ -2,15 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object", "additionalProperties": false,
   "properties": {
-    "outcome": { "type": "string", "enum": ["Approve", "Refer", "Decline"] },
+    "outcome": { "type": "string", "enum": ["Approve", "Refer", "Decline"], "description": "The single plain-language recommendation." },
     "riskGrade": { "type": ["string", "null"], "enum": ["A", "B", "C", "D", null] },
     "indicativeProfitRate": { "type": ["string", "null"] },
-    "decisionAuthority": { "type": "string" },
+    "decisionAuthority": { "type": "string", "minLength": 1 },
     "authorityClause": { "type": "string", "const": "SME-CP-07 §7.1" },
     "reasons": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "properties": {
-      "clause": { "type": "string" }, "conclusion": { "type": "string" }, "evidence": { "type": "string" }, "findingIds": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      "clause": { "type": "string", "pattern": "^SME-CP-07 §(?:4\\.[1-5]|5\\.[1-4]|6)$", "description": "Exactly one applicable policy citation from clauses 4 to 6, for example SME-CP-07 §4.1 or SME-CP-07 §6." },
+      "conclusion": { "type": "string", "minLength": 1, "description": "A concise plain-language reason for the recommendation." },
+      "evidence": { "type": "string", "minLength": 1, "description": "The supporting fact stated in the cited corrected specialist finding." },
+      "findingIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Exact id values copied from the corrected findings that support this reason." }
     }, "required": ["clause", "conclusion", "evidence", "findingIds"] } },
-    "notice": { "type": "string" }
+    "notice": { "type": "string", "const": "AI recommendation — a human must make the decision under SME-CP-07 §7.1." }
   },
   "required": ["outcome", "riskGrade", "indicativeProfitRate", "decisionAuthority", "authorityClause", "reasons", "notice"]
 }
