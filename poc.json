@@ -26,7 +26,7 @@
     {
       "name": "api",
       "type": "process",
-      "start": "node apps/api/src/server.ts",
+      "start": "server=apps/api/src/server.ts; if [ ! -f \"$server\" ]; then server=$(find . -path '*/apps/api/src/server.ts' -print -quit); fi; exec node \"$server\"",
       "public": true,
       "env": { "NODE_ENV": "production" }
     },
