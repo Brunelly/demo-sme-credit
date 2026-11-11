@@ -165,7 +165,7 @@ describe("the app's own migrations", () => {
 
     expect(clean).toMatchObject({ sources: {
       "ZATCA e-invoice verification": { productType: "invoice_financing", clearanceStatus: "Cleared", buyerDispute: false, invoiceEligibility: "Eligible — no dispute recorded" },
-      "Open banking cash flow": { productType: "invoice_financing", returnedCheques: 1 },
+      "Open banking cash flow": { productType: "invoice_financing", returnedCheques: 1, annualRevenueSar: 28600000 },
     } });
     expect(disputed).toMatchObject({ sources: { "ZATCA e-invoice verification": {
       sourceScenario: "disputed_invoice", productType: "invoice_financing", clearanceStatus: "Not cleared — buyer dispute recorded", buyerDispute: true, invoiceEligibility: "Ineligible while disputed",

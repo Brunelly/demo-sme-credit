@@ -2,12 +2,12 @@ import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import type { AiRunner } from "../src/ai/maitento.ts";
 import { RUN_TIMEOUT_MS } from "../src/ai/maitento.ts";
-import { buildSpecialistPromptPayload, validateRecommendationCitations } from "../src/features/applications/applications.service.ts";
+import { buildSpecialistPromptPayload, policyClausesForProduct, validateRecommendationCitations } from "../src/features/applications/applications.service.ts";
 import { testApp, useTestDatabase } from "./helpers.ts";
 
 const mongo = useTestDatabase();
 const caseRecord = { _id: "case-1", businessName: "Sample Food Distributor", businessNameArabic: "موزع أغذية تجريبي", commercialRegistration: "1010000099", product: "invoice_financing" as const, amountSar: 1000000, stage: "credit_assessment" as const, receivedAt: new Date(), city: "Riyadh", sampleData: true, annualRevenueSar: 12000000, invoice: { number: "INV-99", buyerName: "Sample Public Buyer", buyerCategory: "Government" as const, amountSar: 1200000 } };
-const sources = { "SIMAH credit bureau": { score: 714 }, "Wathq company verification": { activeMonths: 38 }, "ZATCA e-invoice verification": { invoiceNumber: "INV-99", buyerDispute: true }, "Open banking cash flow": { statementMonths: 12, dscr: 1.48 } };
+const sources = { "SIMAH credit bureau": { score: 714 }, "Wathq company verification": { activeMonths: 38 }, "ZATCA e-invoice verification": { invoiceNumber: "INV-99", buyerDispute: true }, "Open banking cash flow": { statementMonths: 12, dscr: 1.48, annualRevenueSar: 12000000, averageMonthlyInflowSar: 1000000 } };
 
 function scriptedAi(): AiRunner & { calls: { name: string; inputs: Record<string, string> }[] } {
   const calls: { name: string; inputs: Record<string, string> }[] = [];
@@ -41,6 +41,11 @@ async function seedSourcePack(scenarioId = "clean") {
   await mongo.db.collection<{ _id: string; [key: string]: unknown }>("simulatedAssessmentSources").insertOne({ _id: `case-1:${scenarioId}`, applicationId: "case-1", scenarioId, sampleData: true, sources });
 }
 
+async function seedOverLimitWorkingCapitalPack() {
+  await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertOne({ ...caseRecord, _id: "working-case", product: "working_capital", amountSar: 4000000, invoice: undefined });
+  await mongo.db.collection<{ _id: string; [key: string]: unknown }>("simulatedAssessmentSources").insertOne({ _id: "working-case:clean", applicationId: "working-case", scenarioId: "clean", sampleData: true, sources });
+}
+
 describe("traceable Maitento assessments", () => {
   it("allows Maitento interactions to use their declared two-minute maximum", () => {
     expect(RUN_TIMEOUT_MS).toBe(120_000);
@@ -49,6 +54,36 @@ describe("traceable Maitento assessments", () => {
     const payload = buildSpecialistPromptPayload(sources["SIMAH credit bureau"], "SIMAH credit bureau");
     expect(JSON.parse(payload.sourceData)).toEqual({ assignedSource: "SIMAH credit bureau", simulated: true, source: { score: 714 } });
     expect(payload.sourceData).not.toContain("ZATCA");
+  });
+  it("selects only the policy clauses applicable to the product", () => {
+    expect(policyClausesForProduct("invoice_financing")).toHaveProperty("§4 Invoice financing");
+    expect(policyClausesForProduct("invoice_financing")).not.toHaveProperty("§5 Working capital");
+    expect(policyClausesForProduct("working_capital")).toHaveProperty("§5 Working capital");
+    expect(policyClausesForProduct("working_capital")).not.toHaveProperty("§4 Invoice financing");
+  });
+  it("rejects an approved working-capital recommendation above the sourced revenue and inflow limit", async () => {
+    await seedOverLimitWorkingCapitalPack();
+    const delegate = scriptedAi();
+    const ai: AiRunner = {
+      namespace: "test",
+      async runInteraction(name, inputs) {
+        if (name === "prepare-final-recommendation") {
+          const payload = JSON.parse(inputs.correctedFindings!);
+          expect(payload.application).toMatchObject({ product: "working_capital", amountSar: 4000000, annualRevenueSar: 12000000, averageMonthlyInflowSar: 1000000 });
+          expect(JSON.parse(inputs.policyClauses!)).toEqual(expect.objectContaining({ "§5 Working capital": expect.any(Array), "§6 Risk grade and pricing": expect.any(Array) }));
+          expect(JSON.parse(inputs.policyClauses!)).not.toHaveProperty("§4 Invoice financing");
+          const openBanking = payload.findings.find((finding: { specialistType: string }) => finding.specialistType === "Open banking cash flow");
+          return { runId: "unsafe-working-final", output: JSON.stringify({ outcome: "Approve", riskGrade: "B", indicativeProfitRate: "SAIBOR + 3.0%", missingGradeInputs: [], decisionAuthority: "Credit analyst confirms", authorityClause: "SME-CP-07 §7.1", reasons: [{ clause: "SME-CP-07 §5.1", conclusion: "Approve", evidence: "Revenue and inflow were supplied.", findingIds: [openBanking.id] }], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1." }) };
+        }
+        return delegate.runInteraction(name, inputs);
+      },
+    };
+    const app = testApp(mongo.db, { ai });
+    const started = await request(app).post("/api/applications/working-case/assessment-runs").send({}).expect(202);
+    await vi.waitFor(async () => expect((await request(app).get(`/api/applications/working-case/assessment-runs/${started.body.id}`)).body.status).toBe("failed"));
+    const failed = await request(app).get(`/api/applications/working-case/assessment-runs/${started.body.id}`).expect(200);
+    expect(failed.body.finalRecommendation).toBeNull();
+    expect(failed.body.failureReason).toContain("valid product policy and evidence citations");
   });
   it("runs four specialists in order, reviewer, one re-pass, and final assistant while persisting progress", async () => {
     await seedSourcePack();
@@ -62,14 +97,14 @@ describe("traceable Maitento assessments", () => {
     expect(finished.body).toMatchObject({ status: "completed", finalRecommendation: { outcome: "Refer" } });
     expect(ai.calls.map((call) => call.name)).toEqual(["check-simah-credit", "check-wathq-company", "check-zatca-invoice", "check-open-banking", "review-specialist-finding", "review-specialist-finding", "review-specialist-finding", "review-specialist-finding", "rework-zatca-invoice", "prepare-final-recommendation"]);
     const finalInputs = ai.calls.at(-1)!.inputs;
-    expect(JSON.parse(finalInputs.correctedFindings!).findings).toHaveLength(4);
+    expect(JSON.parse(finalInputs.correctedFindings!)).toMatchObject({ application: { annualRevenueSar: 12000000, averageMonthlyInflowSar: 1000000 }, findings: expect.any(Array) });
     expect(JSON.parse(finalInputs.policyClauses!)).toHaveProperty("§4 Invoice financing");
-    expect(JSON.parse(finalInputs.policyClauses!)).toHaveProperty("§5 Working capital");
+    expect(JSON.parse(finalInputs.policyClauses!)).not.toHaveProperty("§5 Working capital");
     expect(JSON.parse(finalInputs.policyClauses!)).toHaveProperty("§6 Risk grade and pricing");
     expect(finished.body.specialistFindings).toHaveLength(4);
     expect(finished.body.revisedFindings).toHaveLength(1);
     expect(finished.body.steps.every((step: { status: string }) => step.status === "completed")).toBe(true);
-    expect(validateRecommendationCitations(finished.body.finalRecommendation)).toBe(true);
+    expect(validateRecommendationCitations(finished.body.finalRecommendation, "invoice_financing")).toBe(true);
   });
   it("marks a run interrupted when ownership changes before its recommendation is saved", async () => {
     await seedSourcePack();
@@ -138,7 +173,7 @@ describe("traceable Maitento assessments", () => {
     await vi.waitFor(async () => expect((await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`)).body.status).toBe("completed"));
     const finished = await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`).expect(200);
     expect(finished.body.finalRecommendation).toMatchObject({ outcome: "Approve", reasons: [{ clause: "SME-CP-07 §6" }] });
-    expect(validateRecommendationCitations(finished.body.finalRecommendation)).toBe(true);
+    expect(validateRecommendationCitations(finished.body.finalRecommendation, "invoice_financing")).toBe(true);
     expect(calls).toHaveLength(9);
     expect(calls.some((name) => name.startsWith("rework-"))).toBe(false);
   });
@@ -225,7 +260,7 @@ describe("traceable Maitento assessments", () => {
     const started = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
     await vi.waitFor(async () => expect((await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`)).body.status).toBe("failed"));
     const failed = await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`).expect(200);
-    expect(failed.body.failureReason).toContain("did not contain valid policy and evidence citations");
+    expect(failed.body.failureReason).toContain("did not contain valid product policy and evidence citations");
     expect(failed.body.finalRecommendation).toBeNull();
   });
   it("does not fabricate a result when Maitento is not connected", async () => {
