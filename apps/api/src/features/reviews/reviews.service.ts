@@ -3,7 +3,7 @@ import type { AnalystIdentityId, DecisionRecord } from "@app/contracts";
 import { ConflictError, NotFoundError, ValidationError } from "../../errors.ts";
 import type { ReviewsRepository } from "./reviews.repository.ts";
 
-type Input = { assessmentRunId: string; analystIdentityId: AnalystIdentityId; analystId: AnalystIdentityId; analystName: string; expectedSequence: 1 | 2; decision: "approve" | "refer" | "decline" | "override"; notes: string; overrideOutcome?: "Approve" | "Refer" | "Decline"; overrideReason?: DecisionRecord["overrideReason"] };
+type Input = { assessmentRunId: string; analystIdentityId: AnalystIdentityId; analystId: string; analystName: string; expectedSequence: 1 | 2; decision: "approve" | "refer" | "decline" | "override"; notes: string; overrideOutcome?: "Approve" | "Refer" | "Decline"; overrideReason?: DecisionRecord["overrideReason"] };
 
 export class ReviewsService {
   private readonly repository: ReviewsRepository;

@@ -372,8 +372,8 @@ function Recommendation({ applicationId, run, onUpdated }: { applicationId: stri
         <details className={styles.override}>
           <summary>{rec.overrides?.length || rec.override ? "Record another analyst override" : "Record analyst override"}</summary>
           <div className={styles.overrideFields}>
-            <Field label="Decision">
-              <Select value={outcome} onChange={(e) => setOutcome(e.target.value as RecommendationOutcome)} options={["Approve", "Refer", "Decline"].filter((v) => v !== rec.outcome).map((value) => ({ value, label: value }))} />
+            <Field label="Decision" hint="Decline overrides are recorded in the review queue under four-eyes control.">
+              <Select value={outcome} onChange={(e) => setOutcome(e.target.value as RecommendationOutcome)} options={["Approve", "Refer"].filter((v) => v !== rec.outcome).map((value) => ({ value, label: value }))} />
             </Field>
             <Field label="Appendix A reason">
               <Select value={reason} onChange={(e) => setReason(e.target.value as OverrideReason)} options={reasons.map((value) => ({ value, label: value }))} />

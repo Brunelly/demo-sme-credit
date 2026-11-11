@@ -198,6 +198,16 @@ describe("SME Credit Desk", () => {
     expect(await screen.findByText(/Relationship history with the Bank — Documented repayment performance supports approval\./)).toBeInTheDocument();
     expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
   });
+  it("routes decline overrides to the governed review queue", async () => {
+    mockApi({
+      "GET /api/applications": () => applications,
+      "GET /api/applications/app-1/assessment-runs": () => ({ items: [run], simulatedData: true }),
+    });
+    renderAt("/");
+    await userEvent.click(await screen.findByText("Record analyst override"));
+    expect(screen.getByText("Decline overrides are recorded in the review queue under four-eyes control.")).toBeVisible();
+    expect(screen.queryByRole("option", { name: "Decline" })).not.toBeInTheDocument();
+  });
   it("runs an assessment, refreshes history, and exposes a safe failure", async () => {
     let items: unknown[] = [];
     const api = mockApi({

@@ -11,12 +11,12 @@ describe("recommendation override history", () => {
     const app = testApp(mongo.db);
 
     await request(app).post("/api/applications/app-override/checks/run-override/override").send({ outcome: "Approve", reason: "Relationship history with the Bank", rationale: "Documented repayment history supports approval." }).expect(201);
-    await request(app).post("/api/applications/app-override/checks/run-override/override").send({ outcome: "Decline", reason: "Sector or market conditions", rationale: "Updated market evidence supports decline." }).expect(201);
+    const decline = await request(app).post("/api/applications/app-override/checks/run-override/override").send({ outcome: "Decline", reason: "Sector or market conditions", rationale: "Updated market evidence supports decline." }).expect(400);
+    expect(decline.body.error.message).toContain("decision ledger and four-eyes control");
 
     const stored = await mongo.db.collection("applicationCheckRuns").findOne({ _id: "run-override" } as never);
     expect(stored?.finalRecommendation.overrides).toMatchObject([
       { outcome: "Approve", reason: "Relationship history with the Bank", rationale: "Documented repayment history supports approval.", recordedBy: "Credit analyst" },
-      { outcome: "Decline", reason: "Sector or market conditions", rationale: "Updated market evidence supports decline.", recordedBy: "Credit analyst" },
     ]);
   });
 });
