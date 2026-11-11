@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { CreditApplication, CreditRecommendation, OverrideReason, RecommendationOutcome } from "./applications.ts";
+import type { CreditApplication, CreditRecommendation, DecisionAuthority, OverrideReason, RecommendationOutcome } from "./applications.ts";
 
 export const analystDecisionSchema = z.enum(["approve", "refer", "decline", "override"]);
 export type AnalystDecision = z.infer<typeof analystDecisionSchema>;
@@ -31,7 +31,7 @@ export interface DecisionRecord {
   sequence: 1 | 2;
 }
 export interface ReviewQueueItem {
-  application: CreditApplication; assessmentRunId: string; recommendation: CreditRecommendation; authority: string;
+  application: CreditApplication; assessmentRunId: string; recommendation: CreditRecommendation; authority: DecisionAuthority;
   authorityClause: "SME-CP-07 §7.1"; decisions: DecisionRecord[]; queueStatus: "awaiting_decision" | "awaiting_second_analyst";
 }
 export interface ReviewQueueResponse { items: ReviewQueueItem[]; sampleData: boolean }

@@ -6,7 +6,7 @@
     "riskGrade": { "type": ["string", "null"], "enum": ["A", "B", "C", "D", null] },
     "indicativeProfitRate": { "type": ["string", "null"] },
     "missingGradeInputs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "enum": ["commercial_credit_report", "owner_credit_reports", "debt_service_coverage", "buyer_quality"] }, "description": "Case-specific policy inputs unavailable for grading. Empty when riskGrade is assigned." },
-    "decisionAuthority": { "type": "string", "minLength": 1 },
+    "decisionAuthority": { "type": "string", "enum": ["Credit analyst confirms", "Senior credit officer", "Credit analyst reviews the flagged checks", "Credit analyst, then a second analyst (four eyes)", "Credit committee"], "description": "Exact authority level from SME-CP-07 §7.1." },
     "authorityClause": { "type": "string", "const": "SME-CP-07 §7.1" },
     "reasons": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "properties": {
       "clause": { "type": "string", "pattern": "^SME-CP-07 §(?:4\\.[1-5]|5\\.[1-4]|6)$", "description": "Exactly one applicable policy citation from clauses 4 to 6, for example SME-CP-07 §4.1 or SME-CP-07 §6." },

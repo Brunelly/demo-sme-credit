@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AnalystIdentityId, DecisionRecord } from "@app/contracts";
+import { decisionAuthoritySchema, type AnalystIdentityId, type DecisionAuthority, type DecisionRecord } from "@app/contracts";
 import { AuthorizationError, ConflictError, NotFoundError, ValidationError } from "../../errors.ts";
 import type { ReviewsRepository } from "./reviews.repository.ts";
 
@@ -40,12 +40,17 @@ export class ReviewsService {
     return decision;
   }
 
-  private requireAuthority(authority: string, role: Input["analystRole"]): void {
-    const allowed = authority.toLocaleLowerCase().includes("committee")
-      ? ["credit_committee"]
-      : authority.toLocaleLowerCase().includes("senior")
-        ? ["senior_credit_officer", "credit_committee"]
-        : ["credit_analyst", "senior_credit_officer", "credit_committee"];
+  private requireAuthority(authority: unknown, role: Input["analystRole"]): void {
+    const parsedAuthority = decisionAuthoritySchema.safeParse(authority);
+    if (!parsedAuthority.success) throw new AuthorizationError("The assessment has an unrecognised decision authority and must be escalated.");
+    const allowedByAuthority: Record<DecisionAuthority, Input["analystRole"][]> = {
+      "Credit analyst confirms": ["credit_analyst", "senior_credit_officer", "credit_committee"],
+      "Senior credit officer": ["senior_credit_officer", "credit_committee"],
+      "Credit analyst reviews the flagged checks": ["credit_analyst", "senior_credit_officer", "credit_committee"],
+      "Credit analyst, then a second analyst (four eyes)": ["credit_analyst", "senior_credit_officer", "credit_committee"],
+      "Credit committee": ["credit_committee"],
+    };
+    const allowed = allowedByAuthority[parsedAuthority.data];
     if (!allowed.includes(role)) throw new AuthorizationError(`Your authenticated role cannot exercise the required authority: ${authority}.`);
   }
 }

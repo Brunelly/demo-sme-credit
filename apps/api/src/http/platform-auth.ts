@@ -34,9 +34,8 @@ export function verifyPlatformToken(token: string, secret: string, now = Date.no
   if (!z.object({ alg: z.literal("HS256"), typ: z.literal("JWT") }).safeParse(header).success) {
     throw new AuthenticationError("A valid platform identity is required to record a credit decision.");
   }
-  const expected = createHmac("sha256", secret).update(`${encodedHeader}.${encodedPayload}`).digest();
-  let supplied: Buffer;
-  try { supplied = Buffer.from(signature, "base64url"); } catch { supplied = Buffer.alloc(0); }
+  const expected = Buffer.from(createHmac("sha256", secret).update(`${encodedHeader}.${encodedPayload}`).digest("base64url"), "ascii");
+  const supplied = Buffer.from(signature, "ascii");
   if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
     throw new AuthenticationError("A valid platform identity is required to record a credit decision.");
   }

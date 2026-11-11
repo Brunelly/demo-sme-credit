@@ -118,6 +118,14 @@ describe("review queue", () => {
     expect(await mongo.db.collection("creditDecisions").countDocuments()).toBe(0);
   });
 
+  it("rejects an unrecognised stored authority instead of treating it as analyst authority", async () => {
+    await seed();
+    await mongo.db.collection("applicationCheckRuns").updateOne({ _id: "run-1" } as never, { $set: { "finalRecommendation.decisionAuthority": "Analyst approval unless challenged" } } as never);
+    const response = await request(testApp(mongo.db)).post("/api/reviews/app-1/decisions").set("authorization", bearer("maha-alotaibi", "platform-user-17")).send({ assessmentRunId: "run-1", analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "decline", notes: "Bureau evidence does not meet policy." }).expect(403);
+    expect(response.body.error.message).toContain("unrecognised decision authority");
+    expect(await mongo.db.collection("creditDecisions").countDocuments()).toBe(0);
+  });
+
   it("has no direct recommendation override route outside the authenticated ledger", async () => {
     await seed();
     await request(testApp(mongo.db)).post("/api/applications/app-1/checks/run-1/override").send({ outcome: "Approve", reason: "Relationship history with the Bank", rationale: "Documented repayment history supports approval." }).expect(404);

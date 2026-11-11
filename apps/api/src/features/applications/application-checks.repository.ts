@@ -1,11 +1,11 @@
-import type { ApplicationCheckRun, AssessmentStep, CreditRecommendation, ReviewerChallenge, SpecialistFinding, SpecialistType } from "@app/contracts";
+import type { ApplicationCheckRun, AssessmentStep, CreditRecommendation, DecisionAuthority, ReviewerChallenge, SpecialistFinding, SpecialistType } from "@app/contracts";
 import type { Db, IndexDescription } from "mongodb";
 export const APPLICATION_CHECK_RUNS_COLLECTION = "applicationCheckRuns";
 interface RunDocument extends Omit<ApplicationCheckRun, "id"> { _id: string }
 interface LegacyRunDocument {
   _id: string; applicationId: string; scenario: ApplicationCheckRun["scenarioId"]; performedAt: Date; legacy?: boolean;
   results: { specialist: SpecialistType; clause: string; outcome: "pass" | "refer"; summary: string; evidence: string[] }[];
-  recommendation: { outcome: "Approve" | "Refer" | "Decline"; riskGrade: "A" | "B" | "C" | "D"; indicativeProfitRate: string; decisionAuthority: string; authorityClause: "SME-CP-07 §7.1"; reasons: { clause: string; conclusion: string; evidence: string }[]; reviewerChallenges: { specialist: SpecialistType; status: "confirmed" | "challenge"; conclusion: string; evidenceGap?: string }[] };
+  recommendation: { outcome: "Approve" | "Refer" | "Decline"; riskGrade: "A" | "B" | "C" | "D"; indicativeProfitRate: string; decisionAuthority: DecisionAuthority; authorityClause: "SME-CP-07 §7.1"; reasons: { clause: string; conclusion: string; evidence: string }[]; reviewerChallenges: { specialist: SpecialistType; status: "confirmed" | "challenge"; conclusion: string; evidenceGap?: string }[] };
 }
 export const applicationCheckRunIndexes: IndexDescription[] = [
   { key: { applicationId: 1, startedAt: -1, _id: -1 }, name: "application_assessment_runs_history" },
