@@ -26,6 +26,12 @@ const FINAL_POLICY_CLAUSES = {
 };
 
 export function validateRecommendationCitations(recommendation: CreditRecommendation): boolean { return recommendation.reasons.length > 0 && recommendation.reasons.every((reason) => ALLOWED_RECOMMENDATION_CITATION.test(reason.clause) && reason.findingIds.length > 0); }
+export function validateRecommendationAgainstFindings(recommendation: CreditRecommendation, findings: SpecialistFinding[]): boolean {
+  const flagged = findings.filter((finding) => finding.outcome !== "pass");
+  if (flagged.length === 0) return true;
+  if (recommendation.outcome === "Approve") return false;
+  return flagged.every((finding) => recommendation.reasons.some((reason) => reason.findingIds.includes(finding.id)));
+}
 export function buildSpecialistPromptPayload(source: unknown, specialistOrScenario: SpecialistType | string, legacySpecialist?: SpecialistType): Record<string, string> { const specialist = legacySpecialist ?? specialistOrScenario as SpecialistType; return { sourceData: JSON.stringify({ assignedSource: specialist, simulated: true, source }) }; }
 function parseAi<T>(schema: z.ZodType<T>, output: string, label: string): T { try { return schema.parse(JSON.parse(output)); } catch (cause) { throw new AiFailedError(`${label} returned an answer that could not be verified.`, { cause }); } }
 function workflowSteps(): AssessmentStep[] { return [...SPECIALISTS.map(({ type }) => ({ key: type, label: type, status: "queued" as const, startedAt: null, completedAt: null, maitentoRunIds: [], failureReason: null })), { key: "reviewer", label: "Independent reviewer", status: "queued", startedAt: null, completedAt: null, maitentoRunIds: [], failureReason: null }, { key: "final", label: "Final recommendation assistant", status: "queued", startedAt: null, completedAt: null, maitentoRunIds: [], failureReason: null }]; }
@@ -85,7 +91,7 @@ export class ApplicationsService {
       const finalRun = await this.ai.runInteraction("prepare-final-recommendation", { correctedFindings: JSON.stringify({ application: { id: application.id, product: application.product, amountSar: application.amountSar }, findings: corrected }), policyClauses: JSON.stringify(FINAL_POLICY_CLAUSES) });
       const recommendation: CreditRecommendation = { ...parseAi(recommendationResultSchema, finalRun.output, "The final recommendation assistant"), createdAt: new Date().toISOString() };
       const validIds = new Set(corrected.map((item) => item.id));
-      if (!validateRecommendationCitations(recommendation) || recommendation.reasons.some((reason) => reason.findingIds.some((id) => !validIds.has(id)))) throw new ValidationError("The AI recommendation did not contain valid policy and evidence citations.");
+      if (!validateRecommendationCitations(recommendation) || recommendation.reasons.some((reason) => reason.findingIds.some((id) => !validIds.has(id))) || !validateRecommendationAgainstFindings(recommendation, corrected)) throw new ValidationError("The AI recommendation did not contain valid policy and evidence citations.");
       await this.requireHeld(await this.checks.updateStep(runId, held, "final", "completed", recommendation.createdAt, finalRun.runId)); await this.checks.complete(runId, held, recommendation, recommendation.createdAt);
     } catch (error) { const reason = `${activeStep.label} failed: ${safeStageFailure(error)}`; await this.checks.fail(runId, held, activeStep.key, reason, new Date().toISOString()); }
   }
