@@ -19,8 +19,12 @@
 .policy div { display: grid; gap: var(--space-1); }
 .policy span, .reasons span, .ledgerRow span, .ledgerRow time { font-size: var(--text-xs); color: var(--color-text-muted); }
 .reasons, .ledger { display: grid; gap: var(--space-2); }
-.reasons h3, .ledger h3, .form h3 { font-size: var(--text-md); }
-.reasons > div { border-top: var(--border-width) solid var(--color-border); padding-top: var(--space-2); font-size: var(--text-sm); }
+.reasons { border-block: var(--border-width) solid var(--color-border); padding-block: var(--space-2); }
+.reasons summary { cursor: pointer; font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.reasons summary:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+.reasonList { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
+.reasonList > div { border-top: var(--border-width) solid var(--color-border); padding-top: var(--space-2); font-size: var(--text-sm); }
+.ledger h3, .form h3 { font-size: var(--text-md); }
 .reasons p { line-height: var(--leading-normal); }
 .ledger { border-top: var(--border-width) solid var(--color-border); padding-top: var(--space-3); }
 .ledgerRow { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: var(--space-2); font-size: var(--text-sm); }
