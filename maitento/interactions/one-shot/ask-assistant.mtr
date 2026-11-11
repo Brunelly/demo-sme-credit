@@ -1,0 +1,22 @@
+// POST /api/assistant/ask runs this (apps/api/src/features/assistant/assistant.service.ts): one question in, a typed
+// answer out. The input names below are the keys the app sends.
+agent = {
+  name = "Assistant"
+  agent = @ref("assistant")
+}
+task = @prompt("ask-assistant-task")
+inputs.prompts = [
+  {
+    name = "question"
+    description = "What the person asked"
+    required = true
+  },
+  {
+    name = "context"
+    description = "What the app knows that bears on the question, as JSON, when the feature gathers any"
+    required = false
+  }
+]
+// The app parses and checks this shape before using it.
+schema.solution = @json("assistant-answer")
+duration.max = "00:02:00"

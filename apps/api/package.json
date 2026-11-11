@@ -1,0 +1,30 @@
+{
+  "name": "@app/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The API: Express 5, MongoDB and Maitento. In production it also serves the built web app.",
+  "scripts": {
+    "dev": "node --watch src/server.ts",
+    "start": "node src/server.ts",
+    "migrate": "node src/migrate.ts",
+    "build": "tsc -p .",
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "maitento:validate": "node scripts/maitento.ts validate",
+    "maitento:deploy": "node scripts/maitento.ts deploy"
+  },
+  "dependencies": {
+    "@app/contracts": "*",
+    "@maitento/sdk": "^26.11.1",
+    "express": "^5.3.0",
+    "mongodb": "^7.8.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/supertest": "^7.2.1",
+    "mongodb-memory-server-core": "^11.3.0",
+    "supertest": "^7.3.1"
+  }
+}

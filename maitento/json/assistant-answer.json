@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "answer": {
+      "type": "string",
+      "description": "The answer, in plain sentences"
+    },
+    "followUps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Up to three short follow-up questions, or an empty list"
+    }
+  },
+  "required": ["answer", "followUps"],
+  "additionalProperties": false
+}

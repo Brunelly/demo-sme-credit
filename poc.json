@@ -1,0 +1,54 @@
+{
+  "$schema": "./poc.schema.json",
+  "schemaVersion": 1,
+  "runtime": { "node": "22" },
+  "commands": {
+    "install": "npm ci --no-audit --no-fund",
+    "build": "npm run build",
+    "test": "npm test",
+    "migrate": "npm run migrate"
+  },
+  "build": {
+    "outputs": ["node_modules", "apps/web/dist"]
+  },
+  "port": 3000,
+  "health": {
+    "path": "/api/health",
+    "startupTimeoutSeconds": 60
+  },
+  "ui": {
+    "viewports": ["desktop", "phone"],
+    "routes": [
+      { "path": "/", "name": "Home" }
+    ]
+  },
+  "components": [
+    {
+      "name": "api",
+      "type": "process",
+      "start": "node apps/api/src/server.ts",
+      "public": true,
+      "env": { "NODE_ENV": "production" }
+    },
+    {
+      "name": "web",
+      "type": "static",
+      "source": "apps/web",
+      "output": "apps/web/dist",
+      "servedBy": "api"
+    }
+  ],
+  "reservedPaths": ["/__brunelly/"],
+  "maitento": {
+    "project": "maitento"
+  },
+  "env": [
+    { "name": "PORT", "required": true, "secret": false, "description": "The one port the app listens on. The platform sets it to `port`." },
+    { "name": "PUBLIC_URL", "required": true, "secret": false, "description": "The address people open the app at, for absolute links." },
+    { "name": "MONGODB_URI", "required": true, "secret": true, "description": "The app's MongoDB database; its path is the database name." },
+    { "name": "MAITENTO_BASE_URL", "required": false, "secret": false, "description": "The Maitento API. Defaults to https://api.maitento.com." },
+    { "name": "MAITENTO_API_KEY", "required": false, "secret": true, "description": "The app's Maitento key. Without it the app runs and AI features answer \"AI not connected\"." },
+    { "name": "MAITENTO_NAMESPACE", "required": false, "secret": false, "description": "The namespace the maitento/ project is deployed to and runs in." },
+    { "name": "LOG_LEVEL", "required": false, "secret": false, "description": "The least important log lines the app writes: debug, info, warn or error.", "default": "info" }
+  ]
+}

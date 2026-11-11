@@ -1,0 +1,5 @@
+// The app's assistant. The model it runs on: `mt aimodel-list` lists the names, and the tenant needs a model key
+// for the model's provider. Change the model here only: every interaction that uses this agent follows.
+model = @ref("deepseek.deepseek-v4-pro")
+prompt = @prompt("assistant")
+summary = "Answers questions from the people using the app"

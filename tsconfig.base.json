@@ -1,0 +1,22 @@
+{
+  // Shared compiler settings. Each workspace extends this file. TypeScript only type-checks here (noEmit):
+  // Node runs the API's .ts files directly and Vite bundles the web app.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    // Node strips the types and runs the file, so only erasable syntax: no enums, no namespaces, no parameter
+    // properties. Imports name the .ts file: `import { x } from "./x.ts"`.
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "noEmit": true
+  }
+}

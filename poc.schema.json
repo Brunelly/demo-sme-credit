@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "poc.schema.json",
+  "title": "poc.json: how to build, migrate, start and check the app",
+  "description": "The runner manifest. Whatever hosts the app (the platform's runner, a CI job, a self-hosted box) reads it to install, build and test the app, migrate its database, start its components and check its health. Every command runs from the repository root with the environment contract (`env`) set, unless a component says otherwise.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runtime", "commands", "port", "health", "components"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": {
+      "description": "The version of this format. A runner refuses a version it doesn't know.",
+      "const": 1
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node"],
+      "properties": {
+        "node": { "description": "The Node.js major version the app runs on.", "type": "string", "pattern": "^[0-9]+$" }
+      }
+    },
+    "commands": {
+      "description": "Shell commands, run in order on a deploy: install, build, then migrate (on the new version's copy of the database), then each component's start. `test` is the verify step a change must pass.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["install", "build", "test", "migrate"],
+      "properties": {
+        "install": { "description": "Installs dependencies exactly from the lockfile.", "type": "string", "minLength": 1 },
+        "build": { "description": "Type-checks and builds everything. Needs no database.", "type": "string", "minLength": 1 },
+        "test": { "description": "Runs every test. Hermetic: needs no database, network or secrets.", "type": "string", "minLength": 1 },
+        "migrate": { "description": "Applies pending database migrations to MONGODB_URI, then exits. Non-zero fails the deploy.", "type": "string", "minLength": 1 }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "outputs": {
+          "description": "Paths (from the root) that install and build produce and the start commands need. A runner can cache them, keyed by commit and lockfile, and skip install and build when the cache has them.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "port": {
+      "description": "The one port the public component listens on. The runner sets PORT to it and sends all traffic for the app's address there.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "description": "GET on the public port; any 2xx means healthy. Checked before the new version takes traffic, and while it runs.", "type": "string", "pattern": "^/" },
+        "startupTimeoutSeconds": { "description": "How long a fresh start may take to become healthy before the deploy fails.", "type": "integer", "minimum": 1, "default": 60 }
+      }
+    },
+    "ui": {
+      "description": "The app's key screens. A change's checks start the app, open each route at each viewport, take a screenshot, and scan the rendered page for design faults (contrast, overflow, AI-default patterns) and claims that need a source. The screenshots are attached to the change's story.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["viewports", "routes"],
+      "properties": {
+        "viewports": {
+          "description": "The screen sizes every route is opened at: desktop 1440x900, tablet 834x1112, phone 390x844.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["desktop", "tablet", "phone"] }
+        },
+        "routes": {
+          "description": "The pages to open, in order. Add a top-level page here when you add it.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "name"],
+            "properties": {
+              "path": { "description": "The page's path on the app's address. Never under /api or /__brunelly.", "type": "string", "pattern": "^/(?!api(?:/|$)|__brunelly(?:/|$))[^\\s#]*$" },
+              "name": { "description": "What the page is, in a few words, as people using the app would say it.", "type": "string", "minLength": 1, "maxLength": 60 },
+              "key": { "description": "A short id for the page's screenshots. Defaults to the name in lower case, with hyphens.", "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 40 },
+              "waitFor": { "description": "A CSS selector to wait for before the screenshot, when the page's content arrives after it loads.", "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "description": "What the repository is made of. Exactly one `process` component is public.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "description": "A long-running process the runner starts and supervises (restarting it, and reporting its logs when it dies).",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "type", "start"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              "type": { "const": "process" },
+              "start": { "description": "The command that starts it, from the repository root (or `cwd`). Must not return while the process runs.", "type": "string", "minLength": 1 },
+              "cwd": { "description": "Where `start` runs, from the repository root.", "type": "string" },
+              "public": { "description": "Receives PORT and the app's traffic.", "type": "boolean", "default": false },
+              "env": { "description": "Extra, non-secret variables for this process only.", "type": "object", "additionalProperties": { "type": "string" } }
+            }
+          },
+          {
+            "description": "Files built at build time and served by a process component; nothing to start.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "type", "output", "servedBy"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              "type": { "const": "static" },
+              "source": { "description": "Its source folder.", "type": "string" },
+              "output": { "description": "Where `build` puts the files.", "type": "string", "minLength": 1 },
+              "servedBy": { "description": "The name of the process component that serves them.", "type": "string" }
+            }
+          }
+        ]
+      }
+    },
+    "reservedPaths": {
+      "description": "URL path prefixes the platform answers itself, in front of the app. The app must never serve them.",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^/.*/$" }
+    },
+    "maitento": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project"],
+      "properties": {
+        "project": { "description": "The Maitento project folder (.mtr files). The runner deploys it to MAITENTO_NAMESPACE before the new version starts.", "type": "string", "minLength": 1 }
+      }
+    },
+    "env": {
+      "description": "The environment contract: every variable the app reads. The runner provides each one; values are set by people in the platform's settings, never in git, and `secret` ones come from a secret store.",
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "required", "secret"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "required": { "description": "The app can't run without it (in production): a deploy waits until it has a value or a default.", "type": "boolean" },
+          "secret": { "description": "Its value is a credential: stored sealed, never shown again, never in git, and never given a default.", "type": "boolean" },
+          "description": { "description": "What it is for, in a sentence the person filling it in understands.", "type": "string", "maxLength": 500 },
+          "default": { "description": "Used when nobody has set a value; never allowed on a secret.", "type": "string", "maxLength": 2000 },
+          "example": { "description": "An obviously fake value of the right shape, for example ops@example.com. The pipeline's checks run the app with it when nobody has set a value, so give every required setting one. Never a real value, and never a real credential on a secret.", "type": "string", "maxLength": 2000 }
+        },
+        "if": { "properties": { "secret": { "const": true } }, "required": ["secret"] },
+        "then": { "not": { "required": ["default"] } }
+      }
+    }
+  }
+}

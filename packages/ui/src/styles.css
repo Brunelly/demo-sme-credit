@@ -1,0 +1,4 @@
+/* Import once, at the app's entry point (apps/web/src/main.tsx): the font, the tokens, then the page defaults. */
+@import "@fontsource-variable/manrope";
+@import "./tokens.css";
+@import "./base.css";

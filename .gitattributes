@@ -1,0 +1,9 @@
+# LF line endings everywhere, on every OS: the app is built and run in Linux containers.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

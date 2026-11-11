@@ -1,0 +1,72 @@
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-width) solid;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.icon {
+  display: flex;
+  padding-top: 1px;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.title {
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.text {
+  color: var(--color-text-muted);
+}
+
+.action {
+  flex: none;
+  align-self: center;
+}
+
+.info {
+  background: var(--color-info-soft);
+  border-color: color-mix(in srgb, var(--color-info) 22%, transparent);
+  color: var(--color-info);
+}
+
+.success {
+  background: var(--color-success-soft);
+  border-color: color-mix(in srgb, var(--color-success) 22%, transparent);
+  color: var(--color-success);
+}
+
+.warning {
+  background: var(--color-warning-soft);
+  border-color: color-mix(in srgb, var(--color-warning) 24%, transparent);
+  color: var(--color-warning);
+}
+
+.danger {
+  background: var(--color-danger-soft);
+  border-color: color-mix(in srgb, var(--color-danger) 22%, transparent);
+  color: var(--color-danger);
+}
+
+.ai {
+  background: var(--color-ai-soft);
+  border-color: color-mix(in srgb, var(--color-ai) 22%, transparent);
+  color: var(--color-ai);
+}
+
+/* Last, so it wins over the tone's box: the tone keeps only its colour. */
+.flush {
+  padding: 0;
+  border: 0;
+  background: none;
+}

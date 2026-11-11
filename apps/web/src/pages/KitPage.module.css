@@ -1,0 +1,7 @@
+.spacer {
+  height: var(--space-6);
+}
+
+.preview {
+  padding: var(--space-3);
+}

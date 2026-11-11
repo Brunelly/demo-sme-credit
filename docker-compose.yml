@@ -1,0 +1,58 @@
+# The app and its database, for a local or self-hosted run:
+#
+#   docker compose up --build        then open http://localhost:3000
+#   docker compose down               (add -v to delete the data too)
+#
+# `migrate` runs the migrations and exits; `app` starts once it has succeeded, as on every platform deploy.
+# Maitento settings come from your shell or a .env file next to this one; without a key the AI answers
+# "AI not connected". APP_PORT and MONGO_PORT change the ports on your machine.
+
+x-app: &app
+  build: .
+  image: app:local
+  env_file:
+    - path: .env
+      required: false
+  environment: &app-env
+    MONGODB_URI: mongodb://mongo:27017/app
+    MAITENTO_BASE_URL: ${MAITENTO_BASE_URL:-https://api.maitento.com}
+    MAITENTO_API_KEY: ${MAITENTO_API_KEY:-}
+    MAITENTO_NAMESPACE: ${MAITENTO_NAMESPACE:-}
+
+services:
+  mongo:
+    image: mongo:8
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - "127.0.0.1:${MONGO_PORT:-27017}:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    <<: *app
+    command: ["node", "apps/api/src/migrate.ts"]
+    restart: "no"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  app:
+    <<: *app
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      PORT: "3000"
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  mongo-data:

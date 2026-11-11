@@ -1,0 +1,24 @@
+# Dependencies and build output: never committed.
+node_modules/
+dist/
+coverage/
+.vite/
+.vitest/
+*.tsbuildinfo
+
+# Secrets: the environment holds them, never git. Copy .env.example to .env for local runs.
+.env
+.env.*
+!.env.example
+
+# Workspace packages are source code. Some parent ignore files (.NET's default one, for example) drop
+# every `packages/*`; keep ours.
+!/packages/*
+
+# Logs, editors, OS noise
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

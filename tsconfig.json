@@ -1,0 +1,8 @@
+{
+  // The repository-level files: tests/ and the root vitest config. Each workspace has its own tsconfig.json.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["tests", "vitest.config.ts"]
+}
