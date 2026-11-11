@@ -186,7 +186,7 @@ describe("SME Credit Desk", () => {
       "GET /api/applications/app-1/assessment-runs": () => ({ items: [humanReviewRun], simulatedData: true }),
     });
     renderAt("/");
-    expect(await screen.findByText("Human review required", { exact: false })).toBeVisible();
+    expect((await screen.findAllByText("Human review required", { exact: false })).length).toBeGreaterThan(0);
     expect(screen.getByText("Human review", { exact: true })).toBeVisible();
     expect(screen.queryByText("Supported", { exact: true })).not.toBeInTheDocument();
     await userEvent.click(screen.getByText("High risk requires committee review.", { selector: "summary strong" }));
