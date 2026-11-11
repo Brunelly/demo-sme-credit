@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
-import type { ApplicationCheckRun, AssessmentStep, CreditRecommendation, OverrideReason, RecommendationOutcome, ReviewerChallenge, SpecialistFinding, SpecialistType } from "@app/contracts";
+import type { ApplicationCheckRun, AssessmentStep, CreditRecommendation, OverrideReason, RecommendationOutcome, ReviewerChallenge, SimulatedScenario, SpecialistFinding, SpecialistType } from "@app/contracts";
 import { z } from "zod";
 import { AI_NOT_CONNECTED, type AiRunner } from "../../ai/maitento.ts";
 import type { LongRunningWork } from "../../db/long-running.ts";
 import { AiFailedError, ConflictError, DependencyUnavailableError, NotFoundError, ValidationError } from "../../errors.ts";
 import type { ApplicationChecksRepository } from "./application-checks.repository.ts";
 import type { ApplicationsRepository } from "./applications.repository.ts";
-import type { SimulatedScenarioRepository } from "./simulated-scenario.repository.ts";
 import type { SimulatedSourcesRepository } from "./simulated-sources.repository.ts";
 
 const SPECIALISTS: { type: SpecialistType; interaction: string }[] = [
@@ -33,18 +32,18 @@ function workflowSteps(): AssessmentStep[] { return [...SPECIALISTS.map(({ type 
 function safeStageFailure(error: unknown): string { return error instanceof AiFailedError || error instanceof ValidationError || error instanceof ConflictError ? error.message : "Maitento could not complete this stage. Start a new assessment to try again."; }
 
 export class ApplicationsService {
-  private readonly repository: ApplicationsRepository; private readonly checks: ApplicationChecksRepository; private readonly scenarios: SimulatedScenarioRepository; private readonly sources: SimulatedSourcesRepository; private readonly ai: AiRunner | null; private readonly longRunning: LongRunningWork;
-  constructor(repository: ApplicationsRepository, checks: ApplicationChecksRepository, scenarios: SimulatedScenarioRepository, sources: SimulatedSourcesRepository, ai: AiRunner | null, longRunning: LongRunningWork) { this.repository = repository; this.checks = checks; this.scenarios = scenarios; this.sources = sources; this.ai = ai; this.longRunning = longRunning; }
+  private readonly repository: ApplicationsRepository; private readonly checks: ApplicationChecksRepository; private readonly scenario: SimulatedScenario; private readonly sources: SimulatedSourcesRepository; private readonly ai: AiRunner | null; private readonly longRunning: LongRunningWork;
+  constructor(repository: ApplicationsRepository, checks: ApplicationChecksRepository, scenario: SimulatedScenario, sources: SimulatedSourcesRepository, ai: AiRunner | null, longRunning: LongRunningWork) { this.repository = repository; this.checks = checks; this.scenario = scenario; this.sources = sources; this.ai = ai; this.longRunning = longRunning; }
   list() { return this.repository.list(); }
   async latestChecks(applicationId: string) { await this.requireApplication(applicationId); return { latest: await this.checks.latest(applicationId), simulatedData: true as const }; }
   async listRuns(applicationId: string) { await this.requireApplication(applicationId); return { items: await this.checks.list(applicationId), simulatedData: true as const }; }
   async getRun(applicationId: string, runId: string) { await this.requireApplication(applicationId); const run = await this.checks.find(applicationId, runId); if (!run) throw new NotFoundError("The assessment run was not found."); return run; }
   async runChecks(applicationId: string): Promise<ApplicationCheckRun> {
     if (!this.ai) throw new DependencyUnavailableError(AI_NOT_CONNECTED);
-    await this.requireApplication(applicationId); const setting = await this.scenarios.get();
-    if (!await this.sources.get(applicationId, setting.activeScenarioId)) throw new ValidationError("No simulated source pack is available for this application and scenario.");
+    await this.requireApplication(applicationId);
+    if (!await this.sources.get(applicationId, this.scenario)) throw new ValidationError("No simulated source pack is available for this application and scenario.");
     const now = new Date().toISOString();
-    const run = { id: randomUUID(), applicationId, scenarioId: setting.activeScenarioId, scenarioVersion: setting.version, status: "running", startedAt: now, completedAt: null, specialistFindings: [], reviewerChallenges: [], revisedFindings: [], finalRecommendation: null, failureReason: null, createdBy: "Credit analyst", steps: workflowSteps(), ...this.longRunning.lease() } as ApplicationCheckRun;
+    const run = { id: randomUUID(), applicationId, scenarioId: this.scenario, status: "running", startedAt: now, completedAt: null, specialistFindings: [], reviewerChallenges: [], revisedFindings: [], finalRecommendation: null, failureReason: null, createdBy: "Credit analyst", steps: workflowSteps(), ...this.longRunning.lease() } as ApplicationCheckRun;
     await this.checks.record(run); void this.process(run.id); return run;
   }
   async process(runId: string): Promise<void> {

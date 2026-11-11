@@ -2,7 +2,6 @@ import type { Db, IndexDescription } from "mongodb";
 import { logger } from "../logger.ts";
 import { APPLICATIONS_COLLECTION, applicationIndexes } from "../features/applications/applications.repository.ts";
 import { APPLICATION_CHECK_RUNS_COLLECTION, applicationCheckRunIndexes } from "../features/applications/application-checks.repository.ts";
-import { SIMULATED_SCENARIO_SETTINGS_COLLECTION, simulatedScenarioIndexes } from "../features/applications/simulated-scenario.repository.ts";
 import { SIMULATED_SOURCES_COLLECTION, simulatedSourceIndexes } from "../features/applications/simulated-sources.repository.ts";
 import { DECISIONS_COLLECTION, decisionIndexes } from "../features/reviews/reviews.repository.ts";
 
@@ -19,7 +18,6 @@ import { DECISIONS_COLLECTION, decisionIndexes } from "../features/reviews/revie
 export const INDEXES: Record<string, IndexDescription[]> = {
   [APPLICATIONS_COLLECTION]: applicationIndexes,
   [APPLICATION_CHECK_RUNS_COLLECTION]: applicationCheckRunIndexes,
-  [SIMULATED_SCENARIO_SETTINGS_COLLECTION]: simulatedScenarioIndexes,
   [SIMULATED_SOURCES_COLLECTION]: simulatedSourceIndexes,
   [DECISIONS_COLLECTION]: decisionIndexes,
 };

@@ -21,8 +21,7 @@
     "routes": [
       { "path": "/", "name": "Applications" },
       { "path": "/reviews", "name": "Review queue" },
-      { "path": "/dashboard", "name": "Team throughput" },
-      { "path": "/settings", "name": "Settings" }
+      { "path": "/dashboard", "name": "Team throughput" }
     ]
   },
   "components": [

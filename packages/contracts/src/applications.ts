@@ -11,10 +11,8 @@ export interface CreditApplication {
   invoice?: { number: string; buyerName: string; buyerCategory: "Government" | "Listed" | "Established private" | "Other"; amountSar: number };
 }
 export interface ListApplicationsResponse { items: CreditApplication[]; sampleData: boolean }
-export const simulatedScenarioSchema = z.enum(["clean", "disputed_invoice", "low_bureau", "returned_cheques", "ineligible_revenue"]);
+export const simulatedScenarioSchema = z.enum(["clean", "disputed_invoice", "low_bureau", "returned_cheques"]);
 export type SimulatedScenario = z.infer<typeof simulatedScenarioSchema>;
-export const updateSimulatedScenarioSchema = z.object({ activeScenarioId: simulatedScenarioSchema });
-export interface SimulatedScenarioSetting { activeScenarioId: SimulatedScenario; version: number; updatedAt: string; updatedBy: "Credit analyst" }
 export const recommendationOutcomeSchema = z.enum(["Approve", "Refer", "Decline"]);
 export const overrideReasonSchema = z.enum(["Additional collateral or guarantee provided", "Information not available to the assessment", "Relationship history with the Bank", "Data quality issue in a source check", "Sector or market conditions"]);
 export const recordRecommendationOverrideSchema = z.object({ outcome: recommendationOutcomeSchema, reason: overrideReasonSchema, rationale: z.string().trim().min(10).max(1000) });
@@ -45,7 +43,7 @@ export interface AssessmentStep {
   failureReason?: string | null;
 }
 export interface ApplicationCheckRun {
-  id: string; applicationId: string; scenarioId: SimulatedScenario; scenarioVersion: number; status: AssessmentStatus;
+  id: string; applicationId: string; scenarioId: SimulatedScenario; status: AssessmentStatus;
   startedAt: string; completedAt: string | null; specialistFindings: SpecialistFinding[]; reviewerChallenges: ReviewerChallenge[];
   revisedFindings: SpecialistFinding[]; finalRecommendation: CreditRecommendation | null; failureReason: string | null;
   interruptedReason?: string; createdBy: "Credit analyst";
