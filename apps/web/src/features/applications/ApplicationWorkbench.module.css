@@ -29,4 +29,4 @@
 .findingEvidence dt{color:var(--color-text-muted);font-size:var(--text-xs)}
 .findingEvidence dd{margin:0}
 
-@media(max-width:520px){.reasonHeading{align-items:stretch;flex-direction:column}.reasonBranch>summary{padding-right:0;padding-left:0}.treeChildren{margin-left:var(--space-3);padding-left:var(--space-3)}.treeNode::before{left:calc(-1 * var(--space-3));width:var(--space-3)}.findingEvidence dl div{grid-template-columns:1fr}}
+@media(max-width:520px){.queuePane{max-height:18rem;overflow-y:auto}.reasonHeading{align-items:stretch;flex-direction:column}.reasonBranch>summary{padding-right:0;padding-left:0}.treeChildren{margin-left:var(--space-3);padding-left:var(--space-3)}.treeNode::before{left:calc(-1 * var(--space-3));width:var(--space-3)}.findingEvidence dl div{grid-template-columns:1fr}}
