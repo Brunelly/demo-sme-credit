@@ -59,6 +59,17 @@ describe("SME Credit Desk", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Run assessment" }));
     expect(await screen.findByText("Assessment service is temporarily unavailable.")).toBeInTheDocument();
   });
+  it("names a failed stage, preserves completed stages, and enables rerun", async () => {
+    const failure = "Final recommendation assistant failed: Maitento could not complete this stage. Start a new assessment to try again.";
+    const failedRun = { ...run, status: "failed", finalRecommendation: null, failureReason: failure, steps: [
+      { key: "SIMAH credit bureau", label: "SIMAH credit bureau", status: "completed", startedAt: at, completedAt: at, maitentoRunIds: ["mt-1"], failureReason: null },
+      { key: "final", label: "Final recommendation assistant", status: "failed", startedAt: at, completedAt: at, maitentoRunIds: [], failureReason: failure },
+    ] };
+    mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/assessment-runs": () => ({ items: [failedRun], simulatedData: true }) }); renderAt("/");
+    expect(await screen.findByRole("list", { name: "Maitento assessment progress" })).toHaveTextContent("SIMAH credit bureauCompleted");
+    expect(screen.getAllByText(failure)).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Run assessment" })).toBeEnabled();
+  });
   it("updates the global simulated scenario only in Settings", async () => {
     let setting = { activeScenarioId: "clean", version: 2, updatedAt: at, updatedBy: "Credit analyst" }; const api = mockApi({ "GET /api/settings/simulated-scenario": () => setting, "PUT /api/settings/simulated-scenario": body => { setting = { ...setting, ...(body as object), version: 3 }; return setting; } }); renderAt("/settings");
     expect(await screen.findByRole("heading", { name: "Control-centre settings" })).toBeInTheDocument();
