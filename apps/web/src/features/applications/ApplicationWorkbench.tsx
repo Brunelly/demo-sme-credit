@@ -1,10 +1,10 @@
-import type { ApplicationCheckRun, CreditApplication, MissingGradeInput, OverrideReason, RecommendationOutcome, RecommendationReason, SpecialistFinding } from "@app/contracts";
-import { Alert, Badge, Button, CellStack, DataTable, EmptyState, ErrorState, Field, Select, Skeleton, Textarea, type Column } from "@app/ui";
+import type { ApplicationCheckRun, CreditApplication, MissingGradeInput, RecommendationReason, SpecialistFinding } from "@app/contracts";
+import { Alert, Badge, Button, CellStack, DataTable, EmptyState, ErrorState, Skeleton, type Column } from "@app/ui";
 import { Check, ChevronRight, Circle, FileCheck2, LoaderCircle, MessageSquareWarning, Play, RefreshCw, Scale, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useResource } from "../../lib/use-resource.ts";
 import { productLabels, scenarioLabels, stageLabels } from "./application-labels.ts";
-import { getAssessmentRuns, listApplications, recordRecommendationOverride, runApplicationAssessment } from "./applications.api.ts";
+import { getAssessmentRuns, listApplications, runApplicationAssessment } from "./applications.api.ts";
 import styles from "./ApplicationWorkbench.module.css";
 import { usePreferences } from "../../lib/preferences.tsx";
 export function ApplicationWorkbench() {
@@ -184,7 +184,7 @@ function CaseWorkspace({ application }: { application: CreditApplication }) {
       ) : runs.data?.items.length ? (
         <div className={styles.runs}>
           {runs.data.items.map((run, index) => (
-            <AssessmentRun key={run.id} applicationId={application.id} run={run} latest={index === 0} onUpdated={runs.reload} />
+            <AssessmentRun key={run.id} run={run} latest={index === 0} />
           ))}
         </div>
       ) : (
@@ -193,7 +193,7 @@ function CaseWorkspace({ application }: { application: CreditApplication }) {
     </div>
   );
 }
-function AssessmentRun({ applicationId, run, latest, onUpdated }: { applicationId: string; run: ApplicationCheckRun; latest: boolean; onUpdated: () => void }) {
+function AssessmentRun({ run, latest }: { run: ApplicationCheckRun; latest: boolean }) {
   const { locale } = usePreferences();
   const dateTime = new Intl.DateTimeFormat(locale === "ar" ? "ar-SA" : "en-SA", { dateStyle: "medium", timeStyle: "short" });
   const corrected = (finding: SpecialistFinding) => run.revisedFindings.find((r) => r.specialistType === finding.specialistType);
@@ -227,7 +227,7 @@ function AssessmentRun({ applicationId, run, latest, onUpdated }: { applicationI
           {run.failureReason ?? run.interruptedReason ?? "The run did not complete. Start a new assessment."}
         </Alert>
       ) : null}
-      {run.finalRecommendation && <Recommendation applicationId={applicationId} run={run} onUpdated={onUpdated} />}
+      {run.finalRecommendation && <Recommendation run={run} />}
       <ol className={styles.timeline}>
         {run.specialistFindings.map((finding) => {
           const review = run.reviewerChallenges.find((r) => r.findingId === finding.id);
@@ -297,15 +297,9 @@ function Finding({ finding, label }: { finding: SpecialistFinding; label: string
     </section>
   );
 }
-const reasons: OverrideReason[] = ["Additional collateral or guarantee provided", "Information not available to the assessment", "Relationship history with the Bank", "Data quality issue in a source check", "Sector or market conditions"];
-function Recommendation({ applicationId, run, onUpdated }: { applicationId: string; run: ApplicationCheckRun; onUpdated: () => void }) {
+function Recommendation({ run }: { run: ApplicationCheckRun }) {
   const { locale, t } = usePreferences();
   const rec = run.finalRecommendation!;
-  const [outcome, setOutcome] = useState<RecommendationOutcome>(rec.outcome === "Approve" ? "Refer" : "Approve");
-  const [reason, setReason] = useState<OverrideReason>(reasons[0]);
-  const [rationale, setRationale] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string>();
   const missingInputLabels: Record<MissingGradeInput, string> = locale === "ar"
     ? { commercial_credit_report: "التقرير الائتماني للمنشأة", owner_credit_reports: "التقارير الائتمانية للملاك", debt_service_coverage: "نسبة تغطية خدمة الدين", buyer_quality: "تصنيف المشتري" }
     : { commercial_credit_report: "commercial credit report", owner_credit_reports: "owner credit reports", debt_service_coverage: "debt service coverage", buyer_quality: "buyer quality" };
@@ -313,22 +307,6 @@ function Recommendation({ applicationId, run, onUpdated }: { applicationId: stri
   const missingGradeReason = missingInputs?.length
     ? new Intl.ListFormat(locale === "ar" ? "ar-SA" : "en", { style: "long", type: "conjunction" }).format(missingInputs)
     : rec.reasons.map((item) => item.evidence).join(locale === "ar" ? "، " : "; ");
-  async function save() {
-    setSaving(true);
-    setError(undefined);
-    try {
-      await recordRecommendationOverride(applicationId, run.id, {
-        outcome,
-        reason,
-        rationale,
-      });
-      onUpdated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Override not recorded.");
-    } finally {
-      setSaving(false);
-    }
-  }
   return (
     <section className={styles.recommendation} aria-label="AI recommendation">
       <div className={styles.decision}>
@@ -369,28 +347,6 @@ function Recommendation({ applicationId, run, onUpdated }: { applicationId: stri
           {entry.reason} — {entry.rationale} · {entry.recordedBy} · {new Date(entry.recordedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Riyadh" })}
         </Alert>)}</div>
       ) : null}
-        <details className={styles.override}>
-          <summary>{rec.overrides?.length || rec.override ? "Record another analyst override" : "Record analyst override"}</summary>
-          <div className={styles.overrideFields}>
-            <Field label="Decision" hint="Decline overrides are recorded in the review queue under four-eyes control.">
-              <Select value={outcome} onChange={(e) => setOutcome(e.target.value as RecommendationOutcome)} options={["Approve", "Refer"].filter((v) => v !== rec.outcome).map((value) => ({ value, label: value }))} />
-            </Field>
-            <Field label="Appendix A reason">
-              <Select value={reason} onChange={(e) => setReason(e.target.value as OverrideReason)} options={reasons.map((value) => ({ value, label: value }))} />
-            </Field>
-          </div>
-          <Field label="Written rationale">
-            <Textarea rows={3} value={rationale} onChange={(e) => setRationale(e.target.value)} />
-          </Field>
-          {error && (
-            <Alert tone="danger" title="Override not recorded">
-              {error}
-            </Alert>
-          )}
-          <Button size="sm" loading={saving} disabled={rationale.trim().length < 10} onClick={save}>
-            Record override
-          </Button>
-        </details>
     </section>
   );
 }

@@ -52,6 +52,7 @@
     { "name": "MAITENTO_API_KEY", "required": false, "secret": true, "description": "The app's Maitento key. Without it the app runs and AI features answer \"AI not connected\"." },
     { "name": "MAITENTO_NAMESPACE", "required": false, "secret": false, "description": "The namespace the maitento/ project is deployed to and runs in." },
     { "name": "SIMULATED_DATA_SCENARIO", "required": false, "secret": false, "description": "Selects the simulated source-data scenario for analyst replays: clean, disputed_invoice, low_bureau or returned_cheques.", "default": "clean" },
+    { "name": "PLATFORM_AUTH_SECRET", "required": true, "secret": true, "description": "Verifies short-lived platform identity tokens on credit decision and override actions.", "example": "replace-with-a-random-platform-auth-secret" },
     { "name": "LOG_LEVEL", "required": false, "secret": false, "description": "The least important log lines the app writes: debug, info, warn or error.", "default": "info" }
   ]
 }

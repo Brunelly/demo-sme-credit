@@ -1,4 +1,4 @@
-import type { ApplicationCheckRun, AssessmentStep, CreditRecommendation, RecommendationOverride, ReviewerChallenge, SpecialistFinding, SpecialistType } from "@app/contracts";
+import type { ApplicationCheckRun, AssessmentStep, CreditRecommendation, ReviewerChallenge, SpecialistFinding, SpecialistType } from "@app/contracts";
 import type { Db, IndexDescription } from "mongodb";
 export const APPLICATION_CHECK_RUNS_COLLECTION = "applicationCheckRuns";
 interface RunDocument extends Omit<ApplicationCheckRun, "id"> { _id: string }
@@ -75,11 +75,6 @@ export class ApplicationChecksRepository {
     if (!row) return null; const { _id, ...rest } = row; return { id: _id, ...rest };
   }
   async latest(applicationId: string): Promise<ApplicationCheckRun | null> { return (await this.list(applicationId))[0] ?? null; }
-  async recordOverride(applicationId: string, runId: string, override: RecommendationOverride): Promise<ApplicationCheckRun | null> {
-    const row = await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).findOneAndUpdate(
-      { _id: runId, applicationId, status: "completed" }, { $push: { "finalRecommendation.overrides": override }, $set: { "finalRecommendation.override": override } }, { returnDocument: "after" });
-    if (!row) return null; const { _id, ...rest } = row; return { id: _id, ...rest };
-  }
   private toContract(row: RunDocument | LegacyRunDocument): ApplicationCheckRun {
     if ("specialistFindings" in row) { const { _id, ...rest } = row; return { id: _id, ...rest }; }
     const at = row.performedAt.toISOString();

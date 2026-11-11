@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { AnalystIdentityId, DecisionRecord } from "@app/contracts";
-import { ConflictError, NotFoundError, ValidationError } from "../../errors.ts";
+import { AuthorizationError, ConflictError, NotFoundError, ValidationError } from "../../errors.ts";
 import type { ReviewsRepository } from "./reviews.repository.ts";
 
-type Input = { assessmentRunId: string; analystIdentityId: AnalystIdentityId; analystId: string; analystName: string; expectedSequence: 1 | 2; decision: "approve" | "refer" | "decline" | "override"; notes: string; overrideOutcome?: "Approve" | "Refer" | "Decline"; overrideReason?: DecisionRecord["overrideReason"] };
+type Input = { assessmentRunId: string; analystIdentityId: AnalystIdentityId; authenticatedProfileId: AnalystIdentityId; analystId: string; analystName: string; analystRole: "relationship_manager" | "credit_analyst" | "senior_credit_officer" | "credit_committee"; expectedSequence: 1 | 2; decision: "approve" | "refer" | "decline" | "override"; notes: string; overrideOutcome?: "Approve" | "Refer" | "Decline"; overrideReason?: DecisionRecord["overrideReason"] };
 
 export class ReviewsService {
   private readonly repository: ReviewsRepository;
@@ -13,6 +13,8 @@ export class ReviewsService {
   async decide(applicationId: string, input: Input): Promise<DecisionRecord> {
     const item = await this.repository.findAwaitingDecision(applicationId);
     if (!item) throw new NotFoundError("The application is not awaiting an analyst decision.");
+    if (input.analystIdentityId !== input.authenticatedProfileId) throw new AuthorizationError("Record the decision as your authenticated platform identity.");
+    this.requireAuthority(item.authority, input.analystRole);
     if (input.assessmentRunId !== item.assessmentRunId) throw new ConflictError("This decision belongs to a different assessment. Refresh the review queue before continuing.");
     const prior = item.decisions.at(-1);
     const currentSequence = prior?.status === "awaiting_second_analyst" ? 2 : 1;
@@ -36,5 +38,14 @@ export class ReviewsService {
     };
     await this.repository.insert(decision);
     return decision;
+  }
+
+  private requireAuthority(authority: string, role: Input["analystRole"]): void {
+    const allowed = authority.toLocaleLowerCase().includes("committee")
+      ? ["credit_committee"]
+      : authority.toLocaleLowerCase().includes("senior")
+        ? ["senior_credit_officer", "credit_committee"]
+        : ["credit_analyst", "senior_credit_officer", "credit_committee"];
+    if (!allowed.includes(role)) throw new AuthorizationError(`Your authenticated role cannot exercise the required authority: ${authority}.`);
   }
 }

@@ -10,6 +10,7 @@ describe("loadConfig", () => {
       mongodb: { uri: "mongodb://localhost:27017/app", database: "app" },
       maitento: { baseUrl: undefined, apiKey: undefined, namespace: undefined },
       simulatedDataScenario: "clean",
+      platformAuthSecret: undefined,
     });
   });
 
@@ -23,6 +24,7 @@ describe("loadConfig", () => {
       MAITENTO_API_KEY: "user:secret",
       MAITENTO_NAMESPACE: "claims",
       SIMULATED_DATA_SCENARIO: "returned_cheques",
+      PLATFORM_AUTH_SECRET: "fake-platform-auth-secret",
     });
     expect(config).toEqual({
       production: true,
@@ -31,6 +33,7 @@ describe("loadConfig", () => {
       mongodb: { uri: "mongodb://db:27017/claims?retryWrites=true", database: "claims" },
       maitento: { baseUrl: "https://api.maitento.com", apiKey: "user:secret", namespace: "claims" },
       simulatedDataScenario: "returned_cheques",
+      platformAuthSecret: "fake-platform-auth-secret",
     });
   });
 
@@ -42,6 +45,7 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ PORT: "eighty" })).toThrow(ConfigError);
     expect(() => loadConfig({ MONGODB_URI: "localhost:27017" })).toThrow(/MONGODB_URI/);
     expect(() => loadConfig({ NODE_ENV: "production" })).toThrow(/Set MONGODB_URI/);
+    expect(() => loadConfig({ NODE_ENV: "production", MONGODB_URI: "mongodb://db/app" })).toThrow(/PLATFORM_AUTH_SECRET/);
     expect(() => loadConfig({ SIMULATED_DATA_SCENARIO: "live" })).toThrow(/SIMULATED_DATA_SCENARIO/);
   });
 });

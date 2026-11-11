@@ -217,15 +217,15 @@ describe("SME Credit Desk", () => {
     expect(await screen.findByText(/Relationship history with the Bank — Documented repayment performance supports approval\./)).toBeInTheDocument();
     expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
   });
-  it("routes decline overrides to the governed review queue", async () => {
+  it("keeps all analyst overrides out of the assessment workbench", async () => {
     mockApi({
       "GET /api/applications": () => applications,
       "GET /api/applications/app-1/assessment-runs": () => ({ items: [run], simulatedData: true }),
     });
     renderAt("/");
-    await userEvent.click(await screen.findByText("Record analyst override"));
-    expect(screen.getByText("Decline overrides are recorded in the review queue under four-eyes control.")).toBeVisible();
-    expect(screen.queryByRole("option", { name: "Decline" })).not.toBeInTheDocument();
+    await screen.findByText("AI recommendation");
+    expect(screen.queryByText("Record analyst override")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review queue" })).toHaveAttribute("href", "/reviews");
   });
   it("runs an assessment, refreshes history, and exposes a safe failure", async () => {
     let items: unknown[] = [];

@@ -24,6 +24,7 @@ const envSchema = z.object({
   MAITENTO_API_KEY: optionalText,
   MAITENTO_NAMESPACE: optionalText,
   SIMULATED_DATA_SCENARIO: optionalText.pipe(z.enum(["clean", "disputed_invoice", "low_bureau", "returned_cheques"]).optional()),
+  PLATFORM_AUTH_SECRET: optionalText,
 });
 
 export interface Config {
@@ -35,6 +36,8 @@ export interface Config {
   mongodb: { uri: string; database: string };
   maitento: { baseUrl: string | undefined; apiKey: string | undefined; namespace: string | undefined };
   simulatedDataScenario: SimulatedScenario;
+  /** Verifies the platform-issued bearer identity used for credit decisions. */
+  platformAuthSecret: string | undefined;
 }
 
 export class ConfigError extends Error {}
@@ -48,6 +51,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const values = parsed.data;
   const production = values.NODE_ENV === "production";
   if (production && !values.MONGODB_URI) throw new ConfigError("Set MONGODB_URI: production has no default database.");
+  if (production && !values.PLATFORM_AUTH_SECRET) throw new ConfigError("Set PLATFORM_AUTH_SECRET: production decision routes require verified platform identities.");
 
   const uri = values.MONGODB_URI ?? DEFAULT_MONGODB_URI;
   return {
@@ -61,6 +65,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       namespace: values.MAITENTO_NAMESPACE,
     },
     simulatedDataScenario: values.SIMULATED_DATA_SCENARIO ?? "clean",
+    platformAuthSecret: values.PLATFORM_AUTH_SECRET,
   };
 }
 

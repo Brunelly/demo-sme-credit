@@ -49,6 +49,13 @@ export class AuthenticationError extends AppError {
   }
 }
 
+/** 403: the authenticated person does not have the authority required for the action. */
+export class AuthorizationError extends AppError {
+  constructor(message: string) {
+    super(403, "forbidden", message);
+  }
+}
+
 /** 500 with a message people can act on: an AI run failed or answered in the wrong shape. */
 export class AiFailedError extends AppError {
   constructor(message: string, options?: { cause?: unknown }) {

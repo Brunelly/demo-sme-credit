@@ -15,7 +15,6 @@ export const simulatedScenarioSchema = z.enum(["clean", "disputed_invoice", "low
 export type SimulatedScenario = z.infer<typeof simulatedScenarioSchema>;
 export const recommendationOutcomeSchema = z.enum(["Approve", "Refer", "Decline"]);
 export const overrideReasonSchema = z.enum(["Additional collateral or guarantee provided", "Information not available to the assessment", "Relationship history with the Bank", "Data quality issue in a source check", "Sector or market conditions"]);
-export const recordRecommendationOverrideSchema = z.object({ outcome: recommendationOutcomeSchema, reason: overrideReasonSchema, rationale: z.string().trim().min(10).max(1000) });
 export type RecommendationOutcome = z.infer<typeof recommendationOutcomeSchema>;
 export type OverrideReason = z.infer<typeof overrideReasonSchema>;
 export type SpecialistType = "SIMAH credit bureau" | "Wathq company verification" | "ZATCA e-invoice verification" | "Open banking cash flow";
