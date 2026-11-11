@@ -48,7 +48,6 @@
   border-radius: var(--radius-md);
   background: var(--color-on-brand);
   color: var(--color-brand);
-  color: var(--color-on-brand);
   font-weight: var(--weight-bold);
   font-size: var(--text-sm);
   overflow: hidden;
