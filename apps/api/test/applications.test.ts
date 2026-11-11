@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildSpecialistPromptPayload, validateRecommendationCitations } from "../src/features/applications/applications.service.ts";
 import { testApp, useTestDatabase } from "./helpers.ts";
 const mongo = useTestDatabase();
-const caseRecord = { _id: "case-1", businessName: "Sample Food Distributor", businessNameArabic: "موزع أغذية تجريبي", commercialRegistration: "1010000099", product: "invoice_financing", amountSar: 1000000, stage: "credit_assessment", receivedAt: new Date(), city: "Riyadh", sampleData: true, annualRevenueSar: 12000000, invoice: { number: "INV-99", buyerName: "Sample Public Buyer", buyerCategory: "Government", amountSar: 1200000 } };
+const caseRecord = { _id: "case-1", businessName: "Sample Food Distributor", businessNameArabic: "موزع أغذية تجريبي", commercialRegistration: "1010000099", product: "invoice_financing" as const, amountSar: 1000000, stage: "credit_assessment" as const, receivedAt: new Date(), city: "Riyadh", sampleData: true, annualRevenueSar: 12000000, invoice: { number: "INV-99", buyerName: "Sample Public Buyer", buyerCategory: "Government" as const, amountSar: 1200000 } };
 describe("traceable application assessments", () => {
   it("constructs a source-scoped prompt payload", () => {
     const payload = buildSpecialistPromptPayload({ ...caseRecord, id: "case-1", receivedAt: new Date().toISOString(), product: "invoice_financing", stage: "credit_assessment" }, "clean", "SIMAH credit bureau");
@@ -11,7 +11,7 @@ describe("traceable application assessments", () => {
     expect(payload.sourceData).not.toContain("ZATCA");
   });
   it("runs four findings, routes only challenged work to one rework pass, and persists history", async () => {
-    await mongo.db.collection("applications").insertOne(caseRecord); const app = testApp(mongo.db);
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertOne(caseRecord); const app = testApp(mongo.db);
     await request(app).put("/api/settings/simulated-scenario").send({ activeScenarioId: "disputed_invoice" }).expect(200);
     const first = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
     expect(first.body).toMatchObject({ status: "completed", scenarioId: "disputed_invoice", scenarioVersion: 1 });
@@ -29,7 +29,7 @@ describe("traceable application assessments", () => {
     expect((await request(app).get(`/api/applications/case-1/assessment-runs/${first.body.id}`).expect(200)).body.id).toBe(first.body.id);
   });
   it("changes scenarios only through settings and records an override on the selected immutable run", async () => {
-    await mongo.db.collection("applications").insertOne(caseRecord); const app = testApp(mongo.db);
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertOne(caseRecord); const app = testApp(mongo.db);
     await request(app).post("/api/applications/case-1/assessment-runs").send({ scenario: "low_bureau" }).expect(202);
     let history = await request(app).get("/api/applications/case-1/assessment-runs").expect(200);
     expect(history.body.items[0].scenarioId).toBe("clean");
