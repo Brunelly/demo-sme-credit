@@ -17,8 +17,25 @@ describe("SME Credit Desk", () => {
     expect(screen.getByText("First pass · SIMAH credit bureau")).toBeInTheDocument();
     expect(screen.getByText("Challenge recorded", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("Reworked finding · SIMAH credit bureau")).toBeInTheDocument();
-    expect(screen.getByText("Added the policy consequence.")).toBeInTheDocument();
+    expect(screen.getAllByText("Added the policy consequence.").length).toBeGreaterThan(0);
     expect(screen.queryByLabelText("Assessment scenario")).not.toBeInTheDocument();
+  });
+  it("opens a recommendation reason into its policy, evidence, and reviewer re-pass tree", async () => {
+    mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/assessment-runs": () => ({ items: [run], simulatedData: true }) }); renderAt("/");
+    const reason = await screen.findByText("High risk requires committee review.", { selector: "summary strong" });
+    const branch = reason.closest("details");
+    expect(branch).not.toHaveAttribute("open");
+    await userEvent.click(reason);
+    expect(branch).toHaveAttribute("open");
+    expect(screen.getByRole("heading", { name: "AI recommendation" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Policy clause" })).toHaveTextContent("SME-CP-07 §6");
+    expect(screen.getByRole("region", { name: "Evidence" })).toHaveTextContent("Commercial score 528");
+    const review = screen.getByRole("region", { name: "Reviewer pushback and re-pass" });
+    expect(review).toHaveTextContent("Pushback: Policy consequence needs to be explicit.");
+    expect(review).toHaveTextContent("Changed after re-pass: Added the policy consequence.");
+    await userEvent.click(reason);
+    expect(branch).not.toHaveAttribute("open");
+    expect(screen.getByRole("heading", { name: "AI recommendation" })).toBeVisible();
   });
   it("runs an assessment, refreshes history, and exposes a safe failure", async () => {
     let items: unknown[] = []; const api = mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/assessment-runs": () => ({ items, simulatedData: true }), "POST /api/applications/app-1/assessment-runs": () => { items = [run]; return run; } }); renderAt("/");
