@@ -42,6 +42,7 @@ export type AssessmentStatus = "running" | "completed" | "failed" | "interrupted
 export interface AssessmentStep {
   key: string; label: string; status: "queued" | "running" | "completed" | "failed";
   startedAt: string | null; completedAt: string | null; maitentoRunIds: string[];
+  failureReason?: string | null;
 }
 export interface ApplicationCheckRun {
   id: string; applicationId: string; scenarioId: SimulatedScenario; scenarioVersion: number; status: AssessmentStatus;

@@ -35,9 +35,32 @@ describe("traceable Maitento assessments", () => {
     const finished = await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`).expect(200);
     expect(finished.body).toMatchObject({ status: "completed", finalRecommendation: { outcome: "Refer" } });
     expect(ai.calls.map(call => call.name)).toEqual(["check-simah-credit", "check-wathq-company", "check-zatca-invoice", "check-open-banking", "review-specialist-finding", "review-specialist-finding", "review-specialist-finding", "review-specialist-finding", "rework-zatca-invoice", "prepare-final-recommendation"]);
+    const finalInputs = ai.calls.at(-1)!.inputs;
+    expect(JSON.parse(finalInputs.correctedFindings!).findings).toHaveLength(4);
+    expect(JSON.parse(finalInputs.policyClauses!)).toHaveProperty("§4 Invoice financing");
+    expect(JSON.parse(finalInputs.policyClauses!)).toHaveProperty("§5 Working capital");
+    expect(JSON.parse(finalInputs.policyClauses!)).toHaveProperty("§6 Risk grade and pricing");
     expect(finished.body.specialistFindings).toHaveLength(4); expect(finished.body.revisedFindings).toHaveLength(1); expect(finished.body.steps.every((step: { status: string }) => step.status === "completed")).toBe(true);
     expect(validateRecommendationCitations(finished.body.finalRecommendation)).toBe(true);
   });
   it("does not fabricate a result when Maitento is not connected", async () => { await seedSourcePack(); await request(testApp(mongo.db)).post("/api/applications/case-1/assessment-runs").send({}).expect(503); expect(await mongo.db.collection("applicationCheckRuns").countDocuments()).toBe(0); });
   it("allows wording to come from each Maitento run", async () => { await seedSourcePack(); const ai = scriptedAi(); const app = testApp(mongo.db, { ai }); const first = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202); await vi.waitFor(() => expect(ai.calls.length).toBe(10)); const second = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202); await vi.waitFor(() => expect(ai.calls.length).toBe(20)); const one = await request(app).get(`/api/applications/case-1/assessment-runs/${first.body.id}`); const two = await request(app).get(`/api/applications/case-1/assessment-runs/${second.body.id}`); expect(one.body.specialistFindings[0].plainLanguageFinding).not.toBe(two.body.specialistFindings[0].plainLanguageFinding); });
+  it("shows a safe stage-specific failure and permits a successful rerun", async () => {
+    await seedSourcePack();
+    const delegate = scriptedAi(); let failFinal = true;
+    const ai: AiRunner = { namespace: "test", async runInteraction(name, inputs) {
+      if (name === "prepare-final-recommendation" && failFinal) { failFinal = false; throw new Error("provider-token=secret prompt=private stack trace"); }
+      return delegate.runInteraction(name, inputs);
+    } };
+    const app = testApp(mongo.db, { ai });
+    const first = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
+    await vi.waitFor(async () => expect((await request(app).get(`/api/applications/case-1/assessment-runs/${first.body.id}`)).body.status).toBe("failed"));
+    const failed = await request(app).get(`/api/applications/case-1/assessment-runs/${first.body.id}`).expect(200);
+    expect(failed.body.failureReason).toBe("Final recommendation assistant failed: Maitento could not complete this stage. Start a new assessment to try again.");
+    expect(failed.body.failureReason).not.toMatch(/secret|prompt|stack/i);
+    expect(failed.body.steps.slice(0, 5).every((step: { status: string }) => step.status === "completed")).toBe(true);
+    expect(failed.body.steps[5]).toMatchObject({ label: "Final recommendation assistant", status: "failed", failureReason: failed.body.failureReason });
+    const rerun = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
+    await vi.waitFor(async () => expect((await request(app).get(`/api/applications/case-1/assessment-runs/${rerun.body.id}`)).body.status).toBe("completed"));
+  });
 });
