@@ -63,8 +63,14 @@ export class DashboardRepository {
         decidedAt: { $convert: { input: "$recordedAt", to: "date", onError: null, onNull: null } },
       } },
       { $set: {
-        recommendationOutcome: { $ifNull: ["$run.finalRecommendation.outcome", "$run.recommendation.outcome"] },
+        recommendation: { $ifNull: ["$run.finalRecommendation", "$run.recommendation"] },
         turnaroundHours: { $max: [0, { $divide: [{ $subtract: ["$decidedAt", "$application.receivedAt"] }, 3_600_000] }] },
+      } },
+      { $set: {
+        recommendationOutcome: { $ifNull: [
+          { $arrayElemAt: ["$recommendation.overrides.outcome", -1] },
+          { $ifNull: ["$recommendation.override.outcome", "$recommendation.outcome"] },
+        ] },
       } },
       { $set: { overridden: { $and: [
         { $ne: [{ $ifNull: ["$recommendationOutcome", null] }, null] },

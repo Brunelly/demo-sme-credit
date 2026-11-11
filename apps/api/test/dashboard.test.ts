@@ -32,6 +32,29 @@ describe("throughput dashboard", () => {
     expect(await service.throughput()).toMatchObject({ decisionsCompleted: 0, averageTurnaroundHours: null, override: { count: 0, eligibleDecisions: 0, ratePercent: null }, recentDecisions: [] });
   });
 
+  it("compares decisions with the effective stored recommendation without double-counting overrides", async () => {
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertMany([
+      { _id: "app-agrees", businessName: "Sample applicant", product: "working_capital", amountSar: 1_000_000, receivedAt: new Date("2026-11-09T08:00:00Z"), sampleData: true },
+      { _id: "app-differs", businessName: "Sample applicant", product: "working_capital", amountSar: 1_000_000, receivedAt: new Date("2026-11-09T08:00:00Z"), sampleData: true },
+    ]);
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applicationCheckRuns").insertMany([
+      { _id: "run-agrees", applicationId: "app-agrees", status: "completed", finalRecommendation: { outcome: "Approve", override: { outcome: "Refer" } } },
+      { _id: "run-differs", applicationId: "app-differs", status: "completed", finalRecommendation: { outcome: "Approve", override: { outcome: "Decline" }, overrides: [{ outcome: "Refer" }] } },
+    ]);
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("creditDecisions").insertMany([
+      { _id: "decision-agrees", applicationId: "app-agrees", assessmentRunId: "run-agrees", effectiveOutcome: "Refer", recordedAt: "2026-11-10T08:00:00.000Z", status: "final" },
+      { _id: "decision-differs", applicationId: "app-differs", assessmentRunId: "run-differs", effectiveOutcome: "Decline", recordedAt: "2026-11-10T09:00:00.000Z", status: "final" },
+    ]);
+
+    const result = await new DashboardService(new DashboardRepository(mongo.db), () => new Date("2026-11-11T12:00:00Z")).throughput();
+
+    expect(result.override).toEqual({ count: 1, eligibleDecisions: 2, ratePercent: 50 });
+    expect(result.recentDecisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "decision-agrees", overridden: false }),
+      expect.objectContaining({ id: "decision-differs", overridden: true }),
+    ]));
+  });
+
   it("aggregates weekly outcomes, overrides and turnaround across more than 50 decisions", async () => {
     const applications = Array.from({ length: 60 }, (_, index) => ({
       _id: `app-${index}`,
