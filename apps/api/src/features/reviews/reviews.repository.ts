@@ -47,8 +47,10 @@ export class ReviewsRepository {
 
   private async toQueueItem(row: ApplicationDocument): Promise<ReviewQueueItem | null> {
     const run = await this.db.collection<RunDocument>("applicationCheckRuns").find({ applicationId: row._id, $or: [{ status: "completed" }, { recommendation: { $exists: true } }] }).sort({ startedAt: -1, performedAt: -1, _id: -1 } as never).limit(1).next();
-    const recommendation = run?.finalRecommendation ?? run?.recommendation;
-    if (!run || !recommendation) return null;
+    const storedRecommendation = run?.finalRecommendation ?? run?.recommendation;
+    if (!run || !storedRecommendation) return null;
+    const latestOverride = storedRecommendation.overrides?.at(-1) ?? storedRecommendation.override;
+    const recommendation = latestOverride ? { ...storedRecommendation, outcome: latestOverride.outcome } : storedRecommendation;
     const decisions = await this.listDecisions(row._id, run._id);
     const pending = decisions.at(-1)?.status === "awaiting_second_analyst";
     if (decisions.some((decision) => decision.status === "final") && !pending) return null;
