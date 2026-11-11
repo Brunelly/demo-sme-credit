@@ -36,7 +36,7 @@ const sampleRun = {
 } as const;
 
 export async function up(db: Db): Promise<void> {
-  await db.collection("applicationCheckRuns").updateOne(
+  await db.collection<{ _id: string; [key: string]: unknown }>("applicationCheckRuns").updateOne(
     { _id: sampleRun._id },
     { $setOnInsert: sampleRun },
     { upsert: true },
