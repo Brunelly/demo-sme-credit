@@ -34,7 +34,11 @@ export interface RecommendationOverride { outcome: RecommendationOutcome; reason
 export interface CreditRecommendation {
   outcome: RecommendationOutcome; riskGrade: "A" | "B" | "C" | "D" | null; indicativeProfitRate: string | null;
   decisionAuthority: string; authorityClause: "SME-CP-07 §7.1"; reasons: RecommendationReason[];
-  notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1."; createdAt: string; override?: RecommendationOverride;
+  notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1."; createdAt: string;
+  /** Chronological, append-only analyst override audit trail. */
+  overrides?: RecommendationOverride[];
+  /** Latest override retained for compatibility with assessment records created before the audit trail. */
+  override?: RecommendationOverride;
 }
 export type AssessmentStatus = "running" | "completed" | "failed" | "interrupted";
 export interface AssessmentStep {

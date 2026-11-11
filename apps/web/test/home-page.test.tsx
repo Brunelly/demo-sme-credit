@@ -160,6 +160,7 @@ describe("SME Credit Desk", () => {
           reason: "Relationship history with the Bank",
           rationale: "Documented repayment performance supports approval.",
           recordedAt: at,
+          recordedBy: "Credit analyst",
         },
       },
     };
@@ -171,7 +172,7 @@ describe("SME Credit Desk", () => {
       }),
     });
     renderAt("/");
-    expect(await screen.findByText("Relationship history with the Bank — Documented repayment performance supports approval.")).toBeInTheDocument();
+    expect(await screen.findByText(/Relationship history with the Bank — Documented repayment performance supports approval\./)).toBeInTheDocument();
     expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
   });
   it("runs an assessment, refreshes history, and exposes a safe failure", async () => {

@@ -3,7 +3,7 @@ import type { AnalystIdentityId, DecisionRecord } from "@app/contracts";
 import { ConflictError, NotFoundError, ValidationError } from "../../errors.ts";
 import type { ReviewsRepository } from "./reviews.repository.ts";
 
-type Input = { analystIdentityId: AnalystIdentityId; analystId: AnalystIdentityId; analystName: string; expectedSequence: 1 | 2; decision: "approve" | "refer" | "decline" | "override"; notes: string; overrideOutcome?: "Approve" | "Refer" | "Decline"; overrideReason?: DecisionRecord["overrideReason"] };
+type Input = { assessmentRunId: string; analystIdentityId: AnalystIdentityId; analystId: AnalystIdentityId; analystName: string; expectedSequence: 1 | 2; decision: "approve" | "refer" | "decline" | "override"; notes: string; overrideOutcome?: "Approve" | "Refer" | "Decline"; overrideReason?: DecisionRecord["overrideReason"] };
 
 export class ReviewsService {
   private readonly repository: ReviewsRepository;
@@ -14,6 +14,7 @@ export class ReviewsService {
     const queue = await this.repository.list();
     const item = queue.items.find((entry) => entry.application.id === applicationId);
     if (!item) throw new NotFoundError("The application is not awaiting an analyst decision.");
+    if (input.assessmentRunId !== item.assessmentRunId) throw new ConflictError("This decision belongs to a different assessment. Refresh the review queue before continuing.");
     const prior = item.decisions.at(-1);
     const currentSequence = prior?.status === "awaiting_second_analyst" ? 2 : 1;
     if (input.expectedSequence !== currentSequence) throw new ConflictError("The decision ledger changed. Refresh the review queue before continuing.");
@@ -29,7 +30,7 @@ export class ReviewsService {
     const isDecline = effectiveOutcome === "Decline";
     const sequence = input.expectedSequence;
     const decision: DecisionRecord = {
-      id: randomUUID(), applicationId, analystId: input.analystId, analystName: input.analystName, decision: input.decision,
+      id: randomUUID(), applicationId, assessmentRunId: item.assessmentRunId, analystId: input.analystId, analystName: input.analystName, decision: input.decision,
       effectiveOutcome, notes: input.notes, ...(input.overrideReason ? { overrideReason: input.overrideReason } : {}),
       recordedAt: new Date().toISOString(), sequence,
       status: isDecline && sequence === 1 ? "awaiting_second_analyst" : "final",

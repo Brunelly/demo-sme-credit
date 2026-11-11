@@ -57,7 +57,7 @@ export class ApplicationChecksRepository {
   async latest(applicationId: string): Promise<ApplicationCheckRun | null> { return (await this.list(applicationId))[0] ?? null; }
   async recordOverride(applicationId: string, runId: string, override: RecommendationOverride): Promise<ApplicationCheckRun | null> {
     const row = await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).findOneAndUpdate(
-      { _id: runId, applicationId, status: "completed" }, { $set: { "finalRecommendation.override": override } }, { returnDocument: "after" });
+      { _id: runId, applicationId, status: "completed" }, { $push: { "finalRecommendation.overrides": override }, $set: { "finalRecommendation.override": override } }, { returnDocument: "after" });
     if (!row) return null; const { _id, ...rest } = row; return { id: _id, ...rest };
   }
   private toContract(row: RunDocument | LegacyRunDocument): ApplicationCheckRun {

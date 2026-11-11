@@ -354,13 +354,13 @@ function Recommendation({ applicationId, run, onUpdated }: { applicationId: stri
           <RecommendationReasonTree key={reason.clause + reason.conclusion} reason={reason} run={run} index={index} />
         ))}
       </div>
-      {rec.override ? (
-        <Alert tone="info" title={`Analyst override: ${rec.override.outcome}`}>
-          {rec.override.reason} — {rec.override.rationale}
-        </Alert>
-      ) : (
+      {(rec.overrides?.length || rec.override) ? (
+        <div>{(rec.overrides ?? (rec.override ? [rec.override] : [])).map((entry, index) => <Alert key={`${entry.recordedAt}-${index}`} tone="info" title={`Analyst override: ${entry.outcome}`}>
+          {entry.reason} — {entry.rationale} · {entry.recordedBy} · {new Date(entry.recordedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Riyadh" })}
+        </Alert>)}</div>
+      ) : null}
         <details className={styles.override}>
-          <summary>Record analyst override</summary>
+          <summary>{rec.overrides?.length || rec.override ? "Record another analyst override" : "Record analyst override"}</summary>
           <div className={styles.overrideFields}>
             <Field label="Decision">
               <Select value={outcome} onChange={(e) => setOutcome(e.target.value as RecommendationOutcome)} options={["Approve", "Refer", "Decline"].filter((v) => v !== rec.outcome).map((value) => ({ value, label: value }))} />
@@ -381,7 +381,6 @@ function Recommendation({ applicationId, run, onUpdated }: { applicationId: stri
             Record override
           </Button>
         </details>
-      )}
     </section>
   );
 }
