@@ -37,4 +37,11 @@ export class ApplicationsRepository {
       sampleData: documents.length > 0 && documents.every((item) => item.sampleData),
     };
   }
+
+  async find(id: string): Promise<CreditApplication | null> {
+    const document = await this.db.collection<ApplicationDocument>(APPLICATIONS_COLLECTION).findOne({ _id: id });
+    if (!document) return null;
+    const { _id, receivedAt, sampleData: _sampleData, ...application } = document;
+    return { id: _id, ...application, receivedAt: receivedAt.toISOString() };
+  }
 }

@@ -1,0 +1,3 @@
+model = @ref("deepseek.deepseek-v4-pro")
+prompt = @prompt("wathq-specialist")
+summary = "Checks simulated Wathq CR evidence under SME-CP-07 §3.2"

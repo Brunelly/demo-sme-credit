@@ -22,6 +22,7 @@ const envSchema = z.object({
   MAITENTO_BASE_URL: optionalText.pipe(z.url().optional()),
   MAITENTO_API_KEY: optionalText,
   MAITENTO_NAMESPACE: optionalText,
+  SIMULATED_DATA_SCENARIO: optionalText.pipe(z.enum(["clean", "disputed_invoice", "low_bureau", "returned_cheques"]).optional()),
 });
 
 export interface Config {
@@ -32,6 +33,7 @@ export interface Config {
   publicUrl: string;
   mongodb: { uri: string; database: string };
   maitento: { baseUrl: string | undefined; apiKey: string | undefined; namespace: string | undefined };
+  simulatedDataScenario: "clean" | "disputed_invoice" | "low_bureau" | "returned_cheques";
 }
 
 export class ConfigError extends Error {}
@@ -57,6 +59,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       apiKey: values.MAITENTO_API_KEY,
       namespace: values.MAITENTO_NAMESPACE,
     },
+    simulatedDataScenario: values.SIMULATED_DATA_SCENARIO ?? "clean",
   };
 }
 

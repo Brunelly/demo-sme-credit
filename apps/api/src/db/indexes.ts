@@ -1,6 +1,7 @@
 import type { Db, IndexDescription } from "mongodb";
 import { logger } from "../logger.ts";
 import { APPLICATIONS_COLLECTION, applicationIndexes } from "../features/applications/applications.repository.ts";
+import { APPLICATION_CHECK_RUNS_COLLECTION, applicationCheckRunIndexes } from "../features/applications/application-checks.repository.ts";
 
 /**
  * Every index the app needs, by collection. INDEXES ARE CODE, NOT MIGRATIONS: each repository declares the indexes
@@ -14,6 +15,7 @@ import { APPLICATIONS_COLLECTION, applicationIndexes } from "../features/applica
 // e.g. [ORDERS_COLLECTION]: orderIndexes, with the array exported from features/orders/orders.repository.ts.
 export const INDEXES: Record<string, IndexDescription[]> = {
   [APPLICATIONS_COLLECTION]: applicationIndexes,
+  [APPLICATION_CHECK_RUNS_COLLECTION]: applicationCheckRunIndexes,
 };
 
 /** MongoDB's codes for "an index with this name or these keys already exists, with other options". */

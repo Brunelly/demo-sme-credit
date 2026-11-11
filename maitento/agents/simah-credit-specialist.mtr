@@ -1,0 +1,3 @@
+model = @ref("deepseek.deepseek-v4-pro")
+prompt = @prompt("simah-specialist")
+summary = "Checks simulated SIMAH commercial and qualifying owner reports under SME-CP-07 §3.1"

@@ -1,0 +1,5 @@
+agent = { name = "Open banking cash flow specialist" agent = @ref("open-banking-specialist") }
+task = @prompt("specialist-check-task")
+inputs.prompts = [ { name = "sourceData" description = "The simulated bank-statement source record as JSON" required = true } ]
+schema.solution = @json("specialist-check-result")
+duration.max = "00:02:00"
