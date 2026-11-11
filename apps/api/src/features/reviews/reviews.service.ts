@@ -11,8 +11,7 @@ export class ReviewsService {
   list() { return this.repository.list(); }
 
   async decide(applicationId: string, input: Input): Promise<DecisionRecord> {
-    const queue = await this.repository.list();
-    const item = queue.items.find((entry) => entry.application.id === applicationId);
+    const item = await this.repository.findAwaitingDecision(applicationId);
     if (!item) throw new NotFoundError("The application is not awaiting an analyst decision.");
     if (input.assessmentRunId !== item.assessmentRunId) throw new ConflictError("This decision belongs to a different assessment. Refresh the review queue before continuing.");
     const prior = item.decisions.at(-1);

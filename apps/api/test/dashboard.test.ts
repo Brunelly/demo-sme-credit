@@ -31,4 +31,36 @@ describe("throughput dashboard", () => {
     const service = new DashboardService(new DashboardRepository(mongo.db), () => new Date("2026-11-11T12:00:00Z"));
     expect(await service.throughput()).toMatchObject({ decisionsCompleted: 0, averageTurnaroundHours: null, override: { count: 0, eligibleDecisions: 0, ratePercent: null }, recentDecisions: [] });
   });
+
+  it("aggregates weekly outcomes, overrides and turnaround across more than 50 decisions", async () => {
+    const applications = Array.from({ length: 60 }, (_, index) => ({
+      _id: `app-${index}`,
+      businessName: `Sample applicant ${index}`,
+      product: "working_capital",
+      amountSar: 1_000_000,
+      receivedAt: new Date("2026-11-09T08:00:00Z"),
+      sampleData: true,
+    }));
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertMany(applications);
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applicationCheckRuns").insertMany(applications.map((application, index) => ({
+      _id: `run-${index}`,
+      applicationId: application._id,
+      status: "completed",
+      finalRecommendation: { outcome: "Approve" },
+    })));
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("creditDecisions").insertMany(applications.map((application, index) => ({
+      _id: `decision-${index}`,
+      applicationId: application._id,
+      assessmentRunId: `run-${index}`,
+      effectiveOutcome: index < 10 ? "Refer" : "Approve",
+      recordedAt: index === 0 ? "2026-11-11T08:00:00.000Z" : "2026-11-10T08:00:00.000Z",
+      status: "final",
+    })));
+
+    const result = await new DashboardService(new DashboardRepository(mongo.db), () => new Date("2026-11-11T12:00:00Z")).throughput();
+
+    expect(result).toMatchObject({ decisionsCompleted: 60, averageTurnaroundHours: 24.4, outcomes: { approvals: 50, referrals: 10, declines: 0 }, override: { count: 10, eligibleDecisions: 60 } });
+    expect(result.override.ratePercent).toBeCloseTo(100 / 6);
+    expect(result.recentDecisions).toHaveLength(8);
+  });
 });

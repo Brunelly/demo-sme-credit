@@ -15,6 +15,28 @@ describe("review queue", () => {
     expect(response.body.items[0]).toMatchObject({ application: { id: "app-1" }, assessmentRunId: "run-1", queueStatus: "awaiting_decision", authorityClause: "SME-CP-07 §7.1" });
   });
 
+  it("decides a queued application beyond the first 50 rows", async () => {
+    const applications = Array.from({ length: 51 }, (_, index) => ({
+      _id: `queued-${String(index).padStart(2, "0")}`,
+      businessName: `Sample applicant ${index}`,
+      businessNameArabic: "طلب تجريبي",
+      commercialRegistration: `1010000${String(index).padStart(3, "0")}`,
+      product: "working_capital",
+      amountSar: 1_000_000,
+      stage: "decision_required",
+      receivedAt: new Date(`2026-11-09T${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}:00Z`),
+      city: "Riyadh",
+      sampleData: true,
+    }));
+    const runs = applications.map((application) => ({ _id: `run-${application._id}`, applicationId: application._id, status: "completed", startedAt: "2026-11-10T09:00:00Z", finalRecommendation: { outcome: "Approve", decisionAuthority: "Credit analyst confirms" } }));
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertMany(applications);
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applicationCheckRuns").insertMany(runs);
+
+    const response = await request(testApp(mongo.db)).post("/api/reviews/queued-50/decisions").send({ assessmentRunId: "run-queued-50", analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "approve", notes: "All required evidence supports approval." }).expect(201);
+
+    expect(response.body).toMatchObject({ applicationId: "queued-50", assessmentRunId: "run-queued-50", status: "final" });
+  });
+
   it("requires a distinct second analyst before a decline is final and records both reasons", async () => {
     await seed(); const app = testApp(mongo.db);
     const first = await request(app).post("/api/reviews/app-1/decisions").send({ assessmentRunId: "run-1", analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "decline", notes: "Bureau evidence does not meet policy." }).expect(201);
