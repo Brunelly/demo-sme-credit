@@ -27,7 +27,7 @@ const columns: readonly Column<CreditApplication>[] = [
     render: (application) => <CellStack primary={application.businessName} secondary={<><span lang="ar" dir="rtl">{application.businessNameArabic}</span> · CR {application.commercialRegistration}</>} />,
   },
   { key: "product", header: "Product", width: "22%", hideOnMobile: true, render: (application) => productLabels[application.product] },
-  { key: "amountSar", header: "Amount (SAR)", width: "18%", align: "end", render: (application) => sar.format(application.amountSar) },
+  { key: "amountSar", header: "Amount (SAR)", width: "18%", align: "end", hideOnMobile: true, render: (application) => sar.format(application.amountSar) },
   { key: "stage", header: "Stage", width: "18%", render: (application) => <Badge dot tone={stageLabels[application.stage].tone}>{stageLabels[application.stage].label}</Badge> },
   { key: "age", header: "Age", width: "7%", align: "end", hideOnMobile: true, render: (application) => `${ageInDays(application.receivedAt)}d` },
 ];
