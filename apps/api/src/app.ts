@@ -13,6 +13,9 @@ import { ApplicationChecksRepository } from "./features/applications/application
 import { SimulatedScenarioRepository } from "./features/applications/simulated-scenario.repository.ts";
 import { SettingsService } from "./features/settings/settings.service.ts";
 import { settingsRoutes } from "./features/settings/settings.routes.ts";
+import { ReviewsRepository } from "./features/reviews/reviews.repository.ts";
+import { ReviewsService } from "./features/reviews/reviews.service.ts";
+import { reviewsRoutes } from "./features/reviews/reviews.routes.ts";
 import { apiNotFound, errorHandler } from "./http/error-handler.ts";
 import { requestLogger } from "./http/request-logger.ts";
 import { RESERVED_PREFIX, reservedPaths } from "./http/reserved.ts";
@@ -53,6 +56,7 @@ export function createApp({ config, db, ai, longRunning, webDistDir }: AppDepend
   api.use("/health", healthRoutes(db, ai));
   api.use("/assistant", assistantRoutes(assistant));
   api.use("/applications", applicationsRoutes(applications));
+  api.use("/reviews", reviewsRoutes(new ReviewsService(new ReviewsRepository(db))));
   api.use("/settings", settingsRoutes(new SettingsService(scenarios)));
   api.use(apiNotFound);
   app.use("/api", api);

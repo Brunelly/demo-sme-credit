@@ -3,6 +3,7 @@ import { logger } from "../logger.ts";
 import { APPLICATIONS_COLLECTION, applicationIndexes } from "../features/applications/applications.repository.ts";
 import { APPLICATION_CHECK_RUNS_COLLECTION, applicationCheckRunIndexes } from "../features/applications/application-checks.repository.ts";
 import { SIMULATED_SCENARIO_SETTINGS_COLLECTION, simulatedScenarioIndexes } from "../features/applications/simulated-scenario.repository.ts";
+import { DECISIONS_COLLECTION, decisionIndexes } from "../features/reviews/reviews.repository.ts";
 
 /**
  * Every index the app needs, by collection. INDEXES ARE CODE, NOT MIGRATIONS: each repository declares the indexes
@@ -18,6 +19,7 @@ export const INDEXES: Record<string, IndexDescription[]> = {
   [APPLICATIONS_COLLECTION]: applicationIndexes,
   [APPLICATION_CHECK_RUNS_COLLECTION]: applicationCheckRunIndexes,
   [SIMULATED_SCENARIO_SETTINGS_COLLECTION]: simulatedScenarioIndexes,
+  [DECISIONS_COLLECTION]: decisionIndexes,
 };
 
 /** MongoDB's codes for "an index with this name or these keys already exists, with other options". */
