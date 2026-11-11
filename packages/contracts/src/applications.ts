@@ -30,9 +30,12 @@ export interface ReviewerChallenge {
   conclusion: string; evidenceGap: string | null; reasoningDefect: string | null; policyCitation: string | null; createdAt: string; maitentoRunId?: string;
 }
 export interface RecommendationReason { clause: string; conclusion: string; evidence: string; findingIds: string[] }
+export type MissingGradeInput = "commercial_credit_report" | "owner_credit_reports" | "debt_service_coverage" | "buyer_quality";
 export interface RecommendationOverride { outcome: RecommendationOutcome; reason: OverrideReason; rationale: string; recordedAt: string; recordedBy: "Credit analyst" }
 export interface CreditRecommendation {
   outcome: RecommendationOutcome; riskGrade: "A" | "B" | "C" | "D" | null; indicativeProfitRate: string | null;
+  /** Inputs the policy needs before assigning a grade. Empty when a grade is assigned; optional on historical records. */
+  missingGradeInputs?: MissingGradeInput[];
   decisionAuthority: string; authorityClause: "SME-CP-07 §7.1"; reasons: RecommendationReason[];
   notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1."; createdAt: string;
   /** Chronological, append-only analyst override audit trail. */

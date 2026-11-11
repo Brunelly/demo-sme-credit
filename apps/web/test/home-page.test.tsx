@@ -124,6 +124,29 @@ describe("SME Credit Desk", () => {
     expect(screen.queryByLabelText("Assessment scenario")).not.toBeInTheDocument();
     expect(screen.getByText("Source scenario · Low bureau score")).toBeInTheDocument();
   });
+  it("names the case-specific inputs missing for a grade and hides pricing in English and Arabic", async () => {
+    const ungraded = {
+      ...run,
+      finalRecommendation: {
+        ...run.finalRecommendation,
+        riskGrade: null,
+        indicativeProfitRate: null,
+        missingGradeInputs: ["owner_credit_reports", "buyer_quality"],
+      },
+    };
+    mockApi({
+      "GET /api/applications": () => applications,
+      "GET /api/applications/app-1/assessment-runs": () => ({ items: [ungraded], simulatedData: true }),
+    });
+    renderAt("/");
+    expect(await screen.findByText("No grade yet: owner credit reports and buyer quality")).toBeVisible();
+    expect(screen.queryByText(/pricing|not supported/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Switch to Arabic" }));
+    expect(await screen.findByText("لا توجد درجة بعد: التقارير الائتمانية للملاك وتصنيف المشتري")).toBeVisible();
+    expect(screen.queryByText(/not supported/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "التبديل إلى الإنجليزية" }));
+  });
   it("opens a recommendation reason into its policy, evidence, and reviewer re-pass tree", async () => {
     mockApi({
       "GET /api/applications": () => applications,

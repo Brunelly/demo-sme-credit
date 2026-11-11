@@ -1,4 +1,4 @@
-import type { ApplicationCheckRun, CreditApplication, OverrideReason, RecommendationOutcome, RecommendationReason, SpecialistFinding } from "@app/contracts";
+import type { ApplicationCheckRun, CreditApplication, MissingGradeInput, OverrideReason, RecommendationOutcome, RecommendationReason, SpecialistFinding } from "@app/contracts";
 import { Alert, Badge, Button, CellStack, DataTable, EmptyState, ErrorState, Field, Select, Skeleton, Textarea, type Column } from "@app/ui";
 import { Check, ChevronRight, Circle, FileCheck2, LoaderCircle, MessageSquareWarning, Play, RefreshCw, Scale, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -299,12 +299,20 @@ function Finding({ finding, label }: { finding: SpecialistFinding; label: string
 }
 const reasons: OverrideReason[] = ["Additional collateral or guarantee provided", "Information not available to the assessment", "Relationship history with the Bank", "Data quality issue in a source check", "Sector or market conditions"];
 function Recommendation({ applicationId, run, onUpdated }: { applicationId: string; run: ApplicationCheckRun; onUpdated: () => void }) {
+  const { locale, t } = usePreferences();
   const rec = run.finalRecommendation!;
   const [outcome, setOutcome] = useState<RecommendationOutcome>(rec.outcome === "Approve" ? "Refer" : "Approve");
   const [reason, setReason] = useState<OverrideReason>(reasons[0]);
   const [rationale, setRationale] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+  const missingInputLabels: Record<MissingGradeInput, string> = locale === "ar"
+    ? { commercial_credit_report: "التقرير الائتماني للمنشأة", owner_credit_reports: "التقارير الائتمانية للملاك", debt_service_coverage: "نسبة تغطية خدمة الدين", buyer_quality: "تصنيف المشتري" }
+    : { commercial_credit_report: "commercial credit report", owner_credit_reports: "owner credit reports", debt_service_coverage: "debt service coverage", buyer_quality: "buyer quality" };
+  const missingInputs = rec.missingGradeInputs?.map((input) => missingInputLabels[input]);
+  const missingGradeReason = missingInputs?.length
+    ? new Intl.ListFormat(locale === "ar" ? "ar-SA" : "en", { style: "long", type: "conjunction" }).format(missingInputs)
+    : rec.reasons.map((item) => item.evidence).join(locale === "ar" ? "، " : "; ");
   async function save() {
     setSaving(true);
     setError(undefined);
@@ -332,9 +340,11 @@ function Recommendation({ applicationId, run, onUpdated }: { applicationId: stri
           <Badge dot tone={rec.outcome === "Approve" ? "success" : rec.outcome === "Refer" ? "warning" : "danger"}>
             {rec.outcome}
           </Badge>
-          <strong>
-            {rec.riskGrade ? `Grade ${rec.riskGrade}` : "Grade not supported"} · {rec.indicativeProfitRate ?? "Pricing not supported"}
-          </strong>
+          {rec.riskGrade ? (
+            <strong>{locale === "ar" ? `الدرجة ${rec.riskGrade}` : `Grade ${rec.riskGrade}`}{rec.indicativeProfitRate ? ` · ${rec.indicativeProfitRate}` : ""}</strong>
+          ) : (
+            <strong>{t("No grade yet")}: {missingGradeReason}</strong>
+          )}
         </div>
       </div>
       <div className={styles.authority}>

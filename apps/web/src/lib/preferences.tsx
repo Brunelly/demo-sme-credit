@@ -31,6 +31,7 @@ const translations = {
   "Assessment not completed": "لم يكتمل التقييم",
   "Loading assessment history": "جارٍ تحميل سجل التقييم",
   "Assessment history unavailable": "سجل التقييم غير متاح",
+  "No grade yet": "لا توجد درجة بعد",
   "No assessment history": "لا يوجد سجل تقييم",
   "Run the four source specialists to create the first traceable assessment.": "شغّل مختصي المصادر الأربعة لإنشاء أول تقييم قابل للتتبع.",
   "Analyst review queue": "قائمة مراجعة المحلل",
