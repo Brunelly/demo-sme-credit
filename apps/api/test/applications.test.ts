@@ -30,7 +30,7 @@ function scriptedAi(): AiRunner & { calls: { name: string; inputs: Record<string
       }
       const corrected = JSON.parse(inputs.correctedFindings!).findings as { id: string; specialistType: string }[];
       const zatca = corrected.find((item) => item.specialistType.startsWith("ZATCA"))!;
-      return { runId, output: JSON.stringify({ outcome: "Refer", riskGrade: "C", indicativeProfitRate: "SAIBOR + 4.0%", decisionAuthority: "Credit analyst reviews the flagged checks", authorityClause: "SME-CP-07 §7.1", reasons: [{ clause: "SME-CP-07 §4.5", conclusion: `Refer wording ${calls.length}`, evidence: "The corrected ZATCA finding records a dispute.", findingIds: [zatca.id] }], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1." }) };
+      return { runId, output: JSON.stringify({ outcome: "Refer", riskGrade: "C", indicativeProfitRate: "SAIBOR + 4.0%", missingGradeInputs: [], decisionAuthority: "Credit analyst reviews the flagged checks", authorityClause: "SME-CP-07 §7.1", reasons: [{ clause: "SME-CP-07 §4.5", conclusion: `Refer wording ${calls.length}`, evidence: "The corrected ZATCA finding records a dispute.", findingIds: [zatca.id] }], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1." }) };
     },
   };
 }
@@ -100,7 +100,7 @@ describe("traceable Maitento assessments", () => {
         if (name === "review-specialist-finding") return { runId: `clean-review-${JSON.parse(inputs.finding!).finding.id}`, output: JSON.stringify({ status: "accepted", conclusion: "Supported by assigned evidence.", evidenceGap: null, reasoningDefect: null, policyCitation: null }) };
         if (name === "prepare-final-recommendation") {
           const findings = JSON.parse(inputs.correctedFindings!).findings as { id: string }[];
-          return { runId: "clean-final", output: JSON.stringify({ outcome: "Approve", riskGrade: "B", indicativeProfitRate: "SAIBOR + 3.0%", decisionAuthority: "Credit analyst confirms", authorityClause: "SME-CP-07 §7.1", reasons: [{ clause: "SME-CP-07 §6", conclusion: "Approve because the corrected findings support grade B.", evidence: "The corrected findings record compliant checks and supported cash flow.", findingIds: findings.map(({ id }) => id) }], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1." }) };
+          return { runId: "clean-final", output: JSON.stringify({ outcome: "Approve", riskGrade: "B", indicativeProfitRate: "SAIBOR + 3.0%", missingGradeInputs: [], decisionAuthority: "Credit analyst confirms", authorityClause: "SME-CP-07 §7.1", reasons: [{ clause: "SME-CP-07 §6", conclusion: "Approve because the corrected findings support grade B.", evidence: "The corrected findings record compliant checks and supported cash flow.", findingIds: findings.map(({ id }) => id) }], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1." }) };
         }
         throw new Error(`Unexpected clean-case interaction: ${name}`);
       },
@@ -139,7 +139,7 @@ describe("traceable Maitento assessments", () => {
       async runInteraction(name, inputs) {
         if (name === "prepare-final-recommendation") {
           const findings = JSON.parse(inputs.correctedFindings!).findings as { id: string }[];
-          return { runId: "unsafe-final", output: JSON.stringify({ outcome: "Approve", riskGrade: "B", indicativeProfitRate: "SAIBOR + 3.0%", decisionAuthority: "Credit analyst confirms", authorityClause: "SME-CP-07 §7.1", reasons: [{ clause: "SME-CP-07 §6", conclusion: "Approve", evidence: "Other checks passed.", findingIds: findings.map(({ id }) => id) }], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1." }) };
+          return { runId: "unsafe-final", output: JSON.stringify({ outcome: "Approve", riskGrade: "B", indicativeProfitRate: "SAIBOR + 3.0%", missingGradeInputs: [], decisionAuthority: "Credit analyst confirms", authorityClause: "SME-CP-07 §7.1", reasons: [{ clause: "SME-CP-07 §6", conclusion: "Approve", evidence: "Other checks passed.", findingIds: findings.map(({ id }) => id) }], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1." }) };
         }
         return delegate.runInteraction(name, inputs);
       },

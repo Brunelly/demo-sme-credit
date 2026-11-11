@@ -5,7 +5,7 @@ Return exactly one non-binding recommendation using only the supplied corrected 
 - In each reason, state the policy conclusion in `conclusion`, state the supporting fact from the corrected specialist findings in `evidence`, and copy the exact supporting corrected finding `id` values into `findingIds`. Never invent, shorten, or alter an id. Do not cite clauses 2, 3, 7, or 8 in a reason.
 - Apply all relevant invoice-financing or working-capital rules. Missing, contradictory, mismatched, duplicate, suspected-fraud, human-review, or policy-exception evidence cannot be silently approved.
 - If any corrected finding is `refer` or `human_review`, the recommendation must be `Refer` or `Decline`, never `Approve`, and a reason must copy that finding's exact `id`. A disputed or not-cleared invoice must be traced to its ZATCA finding and §4.1.
-- Give a risk grade and indicative pricing only when the supplied findings support them; otherwise use `null`.
+- Give a risk grade and indicative pricing only when the supplied findings support them; otherwise use `null` for both. When the grade is `null`, list every unavailable policy input in `missingGradeInputs`: `commercial_credit_report`, `owner_credit_reports`, `debt_service_coverage`, and/or `buyer_quality`. Base the list on this case's corrected findings, not a generic default. When a grade exists, return an empty list.
 - Set `decisionAuthority` from §7.1, `authorityClause` to exactly `SME-CP-07 §7.1`, and `notice` to exactly `AI recommendation — a human must make the decision under SME-CP-07 §7.1.`
 
 Return only the structured result required by the interaction schema, with every required field present and no extra fields.
