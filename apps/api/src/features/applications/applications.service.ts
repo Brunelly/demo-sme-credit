@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { decisionAuthoritySchema, type ApplicationCheckRun, type AssessmentStep, type CreditRecommendation, type ReviewerChallenge, type SimulatedScenario, type SpecialistFinding, type SpecialistType } from "@app/contracts";
+import { decisionAuthoritySchema, type ApplicationCheckRun, type ApplicationProduct, type AssessmentStep, type CreditRecommendation, type ReviewerChallenge, type SimulatedScenario, type SpecialistFinding, type SpecialistType } from "@app/contracts";
 import { z } from "zod";
 import { AI_NOT_CONNECTED, type AiRunner } from "../../ai/maitento.ts";
 import type { LongRunningWork } from "../../db/long-running.ts";
@@ -22,15 +22,29 @@ const recommendationResultSchema = z.object({ outcome: z.enum(["Approve", "Refer
   if (recommendation.riskGrade !== null && recommendation.missingGradeInputs.length > 0) context.addIssue({ code: "custom", path: ["missingGradeInputs"], message: "A graded recommendation cannot have missing grade inputs." });
   if (recommendation.riskGrade === null && recommendation.indicativeProfitRate !== null) context.addIssue({ code: "custom", path: ["indicativeProfitRate"], message: "Pricing requires a risk grade." });
 });
-const ALLOWED_RECOMMENDATION_CITATION = /^SME-CP-07 §(?:4\.[1-5]|5\.[1-4]|6)$/;
-const FINAL_POLICY_CLAUSES = {
+const PRODUCT_POLICY_CITATION: Record<ApplicationProduct, RegExp> = {
+  invoice_financing: /^SME-CP-07 §(?:4\.[1-5]|6)$/,
+  working_capital: /^SME-CP-07 §(?:5\.[1-4]|6)$/,
+};
+const PRODUCT_POLICY_CLAUSES = {
   "§4 Invoice financing": ["§4.1 Invoices must be due within 120 days, undisputed, and for delivered goods or services.", "§4.2 Advance rates are up to 85% for Government, 80% for Listed or rated corporate, and 70% for Established private buyers; Other buyers are referred.", "§4.3 A single buyer cannot exceed 40% of the facility.", "§4.4 Related-party invoices are ineligible.", "§4.5 A duplicate or mismatched invoice makes the application Refer; suspected fraud is escalated to Financial Crime."],
   "§5 Working capital": ["§5.1 The limit is the lower of 25% of annual revenue and three months of average monthly inflow.", "§5.2 DSCR must be at least 1.25× after existing obligations.", "§5.3 More than three returned cheques or payment reversals in 12 months is a Refer.", "§5.4 Maximum tenor is 12 months and renewal needs a fresh assessment."],
+};
+const COMMON_POLICY_CLAUSES = {
   "§6 Risk grade and pricing": ["Grade A: Bureau Low, DSCR above 1.75×, strong buyers; SAIBOR + 2.25%.", "Grade B: Bureau Low or Moderate, DSCR 1.4–1.75×; SAIBOR + 3.0%.", "Grade C: Bureau Moderate, DSCR 1.25–1.4×; SAIBOR + 4.0%.", "Grade D: Elevated risk or any policy exception; Credit committee only."],
   "§7.1 Decision authority": ["AI may recommend Approve, Refer or Decline but never takes the final decision.", "Approve, all checks green, up to SAR 2 million: Credit analyst confirms.", "Approve, SAR 2–5 million: Senior credit officer.", "Any Refer: Credit analyst reviews the flagged checks.", "Decline: Credit analyst, then a second analyst (four eyes).", "Above SAR 5 million, grade D, or any exception: Credit committee."],
 };
 
-export function validateRecommendationCitations(recommendation: CreditRecommendation): boolean { return recommendation.reasons.length > 0 && recommendation.reasons.every((reason) => ALLOWED_RECOMMENDATION_CITATION.test(reason.clause) && reason.findingIds.length > 0); }
+export function policyClausesForProduct(product: ApplicationProduct): Record<string, string[]> {
+  const productClauses: Record<string, string[]> = product === "invoice_financing" ? { "§4 Invoice financing": PRODUCT_POLICY_CLAUSES["§4 Invoice financing"] } : { "§5 Working capital": PRODUCT_POLICY_CLAUSES["§5 Working capital"] };
+  return { ...productClauses, ...COMMON_POLICY_CLAUSES };
+}
+export function validateRecommendationCitations(recommendation: CreditRecommendation, product: ApplicationProduct): boolean { return recommendation.reasons.length > 0 && recommendation.reasons.every((reason) => PRODUCT_POLICY_CITATION[product].test(reason.clause) && reason.findingIds.length > 0); }
+export function validateWorkingCapitalLimit(recommendation: CreditRecommendation, amountSar: number, annualRevenueSar: number, averageMonthlyInflowSar: number): boolean {
+  const limitSar = Math.min(annualRevenueSar * 0.25, averageMonthlyInflowSar * 3);
+  if (amountSar <= limitSar) return true;
+  return recommendation.outcome !== "Approve" && recommendation.reasons.some((reason) => reason.clause === "SME-CP-07 §5.1");
+}
 export function validateRecommendationAgainstFindings(recommendation: CreditRecommendation, findings: SpecialistFinding[]): boolean {
   const flagged = findings.filter((finding) => finding.outcome !== "pass");
   if (flagged.length === 0) return true;
@@ -99,10 +113,15 @@ export class ApplicationsService {
       activeStep = { ...activeStep, key: "final", label: "Final recommendation assistant" };
       await this.requireHeld(await this.checks.updateStep(runId, held, "final", "running", new Date().toISOString()));
       const corrected = findings.map((finding) => revised.find((item) => item.specialistType === finding.specialistType) ?? finding);
-      const finalRun = await this.ai.runInteraction("prepare-final-recommendation", { correctedFindings: JSON.stringify({ application: { id: application.id, product: application.product, amountSar: application.amountSar }, findings: corrected }), policyClauses: JSON.stringify(FINAL_POLICY_CLAUSES) });
+      const cashFlowSource = pack.sources["Open banking cash flow"] as { annualRevenueSar?: unknown; averageMonthlyInflowSar?: unknown };
+      const annualRevenueSar = cashFlowSource.annualRevenueSar;
+      const averageMonthlyInflowSar = cashFlowSource.averageMonthlyInflowSar;
+      if (application.product === "working_capital" && (typeof annualRevenueSar !== "number" || typeof averageMonthlyInflowSar !== "number")) throw new ValidationError("The simulated open-banking source is missing revenue or inflow evidence required by SME-CP-07 §5.1.");
+      const finalRun = await this.ai.runInteraction("prepare-final-recommendation", { correctedFindings: JSON.stringify({ application: { id: application.id, product: application.product, amountSar: application.amountSar, annualRevenueSar, averageMonthlyInflowSar }, findings: corrected }), policyClauses: JSON.stringify(policyClausesForProduct(application.product)) });
       const recommendation: CreditRecommendation = { ...parseAi(recommendationResultSchema, finalRun.output, "The final recommendation assistant"), createdAt: new Date().toISOString() };
       const validIds = new Set(corrected.map((item) => item.id));
-      if (!validateRecommendationCitations(recommendation) || recommendation.reasons.some((reason) => reason.findingIds.some((id) => !validIds.has(id))) || !validateRecommendationAgainstFindings(recommendation, corrected)) throw new ValidationError("The AI recommendation did not contain valid policy and evidence citations.");
+      const respectsWorkingCapitalLimit = application.product !== "working_capital" || validateWorkingCapitalLimit(recommendation, application.amountSar, annualRevenueSar as number, averageMonthlyInflowSar as number);
+      if (!validateRecommendationCitations(recommendation, application.product) || recommendation.reasons.some((reason) => reason.findingIds.some((id) => !validIds.has(id))) || !validateRecommendationAgainstFindings(recommendation, corrected) || !respectsWorkingCapitalLimit) throw new ValidationError("The AI recommendation did not contain valid product policy and evidence citations.");
       await this.requireHeld(await this.checks.updateStep(runId, held, "final", "completed", recommendation.createdAt, finalRun.runId));
       await this.requireHeld(await this.checks.complete(runId, held, recommendation, recommendation.createdAt));
     } catch (error) {
