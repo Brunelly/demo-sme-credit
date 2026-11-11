@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { DecisionRecord } from "@app/contracts";
+import type { AnalystIdentityId, DecisionRecord } from "@app/contracts";
 import { ConflictError, NotFoundError, ValidationError } from "../../errors.ts";
 import type { ReviewsRepository } from "./reviews.repository.ts";
 
-type Input = { analystId: string; analystName: string; expectedSequence: 1 | 2; decision: "approve" | "refer" | "decline" | "override"; notes: string; overrideOutcome?: "Approve" | "Refer" | "Decline"; overrideReason?: DecisionRecord["overrideReason"] };
+type Input = { analystIdentityId: AnalystIdentityId; analystId: AnalystIdentityId; analystName: string; expectedSequence: 1 | 2; decision: "approve" | "refer" | "decline" | "override"; notes: string; overrideOutcome?: "Approve" | "Refer" | "Decline"; overrideReason?: DecisionRecord["overrideReason"] };
 
 export class ReviewsService {
   private readonly repository: ReviewsRepository;
@@ -20,7 +20,7 @@ export class ReviewsService {
     const effectiveOutcome = input.decision === "override" ? input.overrideOutcome! : ({ approve: "Approve", refer: "Refer", decline: "Decline" } as const)[input.decision];
     if (input.decision === "override" && (!input.overrideOutcome || !input.overrideReason)) throw new ValidationError("An override outcome and Appendix A reason are required.");
     if (prior?.status === "awaiting_second_analyst") {
-      if (prior.analystId === input.analystId) throw new ConflictError("A different authenticated analyst must confirm or reject the decline under the four-eyes rule.");
+      if (prior.analystId === input.analystId) throw new ConflictError("A different analyst must confirm or reject the decline under the four-eyes rule.");
       const rejectsOverrideDecline = prior.decision === "override" && prior.effectiveOutcome === "Decline" && effectiveOutcome === item.recommendation.outcome;
       if (effectiveOutcome !== "Decline" && !rejectsOverrideDecline) throw new ConflictError("Confirm the pending decline, or reject it by retaining the original recommendation.");
     } else if (input.decision !== "override" && effectiveOutcome !== item.recommendation.outcome) {

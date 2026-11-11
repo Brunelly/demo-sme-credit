@@ -17,24 +17,24 @@ describe("review queue", () => {
 
   it("requires a distinct second analyst before a decline is final and records both reasons", async () => {
     await seed(); const app = testApp(mongo.db);
-    const first = await request(app).post("/api/reviews/app-1/decisions").set("x-authenticated-user-id", "user-17").send({ analystName: "Analyst A", expectedSequence: 1, decision: "decline", notes: "Bureau evidence does not meet policy." }).expect(201);
-    expect(first.body).toMatchObject({ status: "awaiting_second_analyst", sequence: 1, analystId: "user-17", analystName: "Analyst A" });
-    await request(app).post("/api/reviews/app-1/decisions").set("x-authenticated-user-id", "user-17").send({ analystName: "A Different Name", expectedSequence: 2, decision: "decline", notes: "I confirm the evidence review." }).expect(409);
-    const second = await request(app).post("/api/reviews/app-1/decisions").set("x-authenticated-user-id", "user-29").send({ analystName: "Analyst B", expectedSequence: 2, decision: "decline", notes: "Independent review confirms the decline." }).expect(201);
-    expect(second.body).toMatchObject({ status: "final", sequence: 2, analystId: "user-29", analystName: "Analyst B" });
+    const first = await request(app).post("/api/reviews/app-1/decisions").send({ analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "decline", notes: "Bureau evidence does not meet policy." }).expect(201);
+    expect(first.body).toMatchObject({ status: "awaiting_second_analyst", sequence: 1, analystId: "maha-alotaibi", analystName: "Maha Alotaibi" });
+    await request(app).post("/api/reviews/app-1/decisions").send({ analystIdentityId: "maha-alotaibi", expectedSequence: 2, decision: "decline", notes: "I confirm the evidence review." }).expect(409);
+    const second = await request(app).post("/api/reviews/app-1/decisions").send({ analystIdentityId: "faisal-alqahtani", expectedSequence: 2, decision: "decline", notes: "Independent review confirms the decline." }).expect(201);
+    expect(second.body).toMatchObject({ status: "final", sequence: 2, analystId: "faisal-alqahtani", analystName: "Faisal Alqahtani" });
     expect(await mongo.db.collection("creditDecisions").countDocuments({ applicationId: "app-1" })).toBe(2);
   });
 
   it("records an override only with an Appendix A reason", async () => {
     await seed(); const app = testApp(mongo.db);
-    await request(app).post("/api/reviews/app-1/decisions").set("x-authenticated-user-id", "user-17").send({ analystName: "Analyst A", expectedSequence: 1, decision: "override", overrideOutcome: "Approve", notes: "New signed buyer confirmation is now available." }).expect(400);
-    const response = await request(app).post("/api/reviews/app-1/decisions").set("x-authenticated-user-id", "user-17").send({ analystName: "Analyst A", expectedSequence: 1, decision: "override", overrideOutcome: "Approve", overrideReason: "Information not available to the assessment", notes: "New signed buyer confirmation is now available." }).expect(201);
-    expect(response.body).toMatchObject({ decision: "override", effectiveOutcome: "Approve", overrideReason: "Information not available to the assessment", analystName: "Analyst A" });
+    await request(app).post("/api/reviews/app-1/decisions").send({ analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "override", overrideOutcome: "Approve", notes: "New signed buyer confirmation is now available." }).expect(400);
+    const response = await request(app).post("/api/reviews/app-1/decisions").send({ analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "override", overrideOutcome: "Approve", overrideReason: "Information not available to the assessment", notes: "New signed buyer confirmation is now available." }).expect(201);
+    expect(response.body).toMatchObject({ decision: "override", effectiveOutcome: "Approve", overrideReason: "Information not available to the assessment", analystName: "Maha Alotaibi" });
   });
 
   it("requires Appendix A override evidence when the analyst departs from the recommendation", async () => {
     await seed();
-    const response = await request(testApp(mongo.db)).post("/api/reviews/app-1/decisions").set("x-authenticated-user-id", "user-17").send({ analystName: "Analyst A", expectedSequence: 1, decision: "approve", notes: "I would approve this application." }).expect(400);
+    const response = await request(testApp(mongo.db)).post("/api/reviews/app-1/decisions").send({ analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "approve", notes: "I would approve this application." }).expect(400);
     expect(response.body.error.message).toContain("must be recorded as an override");
   });
 
@@ -44,8 +44,8 @@ describe("review queue", () => {
     await runs.updateOne({ _id: "run-1" }, { $set: { "finalRecommendation.outcome": "Approve" } });
     const original = await runs.findOne({ _id: "run-1" });
     const app = testApp(mongo.db);
-    await request(app).post("/api/reviews/app-1/decisions").set("x-authenticated-user-id", "user-17").send({ analystName: "Analyst A", expectedSequence: 1, decision: "override", overrideOutcome: "Decline", overrideReason: "Sector or market conditions", notes: "Current sector conditions warrant decline." }).expect(201);
-    const rejected = await request(app).post("/api/reviews/app-1/decisions").set("x-authenticated-user-id", "user-29").send({ analystName: "Analyst B", expectedSequence: 2, decision: "approve", notes: "Independent review retains the original recommendation." }).expect(201);
+    await request(app).post("/api/reviews/app-1/decisions").send({ analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "override", overrideOutcome: "Decline", overrideReason: "Sector or market conditions", notes: "Current sector conditions warrant decline." }).expect(201);
+    const rejected = await request(app).post("/api/reviews/app-1/decisions").send({ analystIdentityId: "faisal-alqahtani", expectedSequence: 2, decision: "approve", notes: "Independent review retains the original recommendation." }).expect(201);
     expect(rejected.body).toMatchObject({ sequence: 2, status: "final", effectiveOutcome: "Approve" });
     expect(await runs.findOne({ _id: "run-1" })).toEqual(original);
     expect(await mongo.db.collection("creditDecisions").countDocuments({ applicationId: "app-1" })).toBe(2);
@@ -53,13 +53,13 @@ describe("review queue", () => {
 
   it("atomically accepts only one concurrent decision for each ledger sequence", async () => {
     await seed(); const app = testApp(mongo.db);
-    const results = await Promise.all(["user-17", "user-29"].map((userId) => request(app).post("/api/reviews/app-1/decisions").set("x-authenticated-user-id", userId).send({ analystName: userId, expectedSequence: 1, decision: "decline", notes: "Bureau evidence does not meet policy." })));
+    const results = await Promise.all(["maha-alotaibi", "faisal-alqahtani"].map((analystIdentityId) => request(app).post("/api/reviews/app-1/decisions").send({ analystIdentityId, expectedSequence: 1, decision: "decline", notes: "Bureau evidence does not meet policy." })));
     expect(results.map((result) => result.status).sort()).toEqual([201, 409]);
     expect(await mongo.db.collection("creditDecisions").countDocuments({ applicationId: "app-1", sequence: 1 })).toBe(1);
   });
 
-  it("rejects identity-sensitive decisions when the authentication proxy supplied no identity", async () => {
+  it("rejects an identity outside the fixed PoC list", async () => {
     await seed();
-    await request(testApp(mongo.db)).post("/api/reviews/app-1/decisions").send({ analystName: "Analyst A", expectedSequence: 1, decision: "decline", notes: "Bureau evidence does not meet policy." }).expect(401);
+    await request(testApp(mongo.db)).post("/api/reviews/app-1/decisions").send({ analystIdentityId: "unlisted-person", expectedSequence: 1, decision: "decline", notes: "Bureau evidence does not meet policy." }).expect(400);
   });
 });
