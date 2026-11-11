@@ -21,12 +21,12 @@ describe("analyst review queue", () => {
   });
 
   it("locks a pending decline to an independent decline review", async () => {
-    const pending = { ...item, decisions: [{ id: "d-1", applicationId: "app-1007", analystId: "user-17", analystName: "Maha Alotaibi", decision: "decline", effectiveOutcome: "Decline", notes: "Evidence does not meet policy.", recordedAt: "2026-11-11T10:00:00Z", status: "awaiting_second_analyst", sequence: 1 }], queueStatus: "awaiting_second_analyst" };
+    const pending = { ...item, recommendation: { ...item.recommendation, outcome: "Approve" }, decisions: [{ id: "d-1", applicationId: "app-1007", analystId: "user-17", analystName: "Maha Alotaibi", decision: "override", effectiveOutcome: "Decline", notes: "Evidence does not meet policy.", overrideReason: "Sector or market conditions", recordedAt: "2026-11-11T10:00:00Z", status: "awaiting_second_analyst", sequence: 1 }], queueStatus: "awaiting_second_analyst" };
     mockApi({ "GET /api/reviews": () => ({ items: [pending], sampleData: true }) }); renderAt("/reviews");
     expect(await screen.findByRole("heading", { name: "Independent decline review" })).toBeInTheDocument();
     const group = screen.getByRole("group", { name: "Decision" });
-    expect(within(group).getByRole("button", { name: "Approve" })).toBeDisabled();
-    expect(within(group).getByRole("button", { name: "Decline" })).toBeEnabled();
+    expect(within(group).getByRole("button", { name: "Reject decline" })).toBeEnabled();
+    expect(within(group).getByRole("button", { name: "Confirm decline" })).toBeEnabled();
     expect(screen.getByText("Evidence does not meet policy.")).toBeInTheDocument();
   });
 
