@@ -131,6 +131,26 @@ describe("traceable Maitento assessments", () => {
     expect(failed.body.failureReason).toBe("Final recommendation assistant failed: The final recommendation assistant returned an answer that could not be verified.");
     expect(failed.body.finalRecommendation).toBeNull();
   });
+  it("rejects an Approve recommendation when a disputed ZATCA finding requires referral", async () => {
+    await seedSourcePack("disputed_invoice");
+    const delegate = scriptedAi();
+    const ai: AiRunner = {
+      namespace: "test",
+      async runInteraction(name, inputs) {
+        if (name === "prepare-final-recommendation") {
+          const findings = JSON.parse(inputs.correctedFindings!).findings as { id: string }[];
+          return { runId: "unsafe-final", output: JSON.stringify({ outcome: "Approve", riskGrade: "B", indicativeProfitRate: "SAIBOR + 3.0%", decisionAuthority: "Credit analyst confirms", authorityClause: "SME-CP-07 §7.1", reasons: [{ clause: "SME-CP-07 §6", conclusion: "Approve", evidence: "Other checks passed.", findingIds: findings.map(({ id }) => id) }], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1." }) };
+        }
+        return delegate.runInteraction(name, inputs);
+      },
+    };
+    const app = testApp(mongo.db, { ai, config: { simulatedDataScenario: "disputed_invoice" } });
+    const started = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
+    await vi.waitFor(async () => expect((await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`)).body.status).toBe("failed"));
+    const failed = await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`).expect(200);
+    expect(failed.body.failureReason).toContain("did not contain valid policy and evidence citations");
+    expect(failed.body.finalRecommendation).toBeNull();
+  });
   it("does not fabricate a result when Maitento is not connected", async () => {
     await seedSourcePack();
     await request(testApp(mongo.db)).post("/api/applications/case-1/assessment-runs").send({}).expect(503);

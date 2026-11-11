@@ -154,4 +154,23 @@ describe("the app's own migrations", () => {
   it("ignores the folder's README", async () => {
     expect((await discoverMigrations()).every((m) => m.file.endsWith(".ts"))).toBe(true);
   });
+
+  it("makes each simulated scenario change specialist source facts and preserves product context", async () => {
+    await migrate(mongo.db);
+    const packs = mongo.db.collection("simulatedAssessmentSources");
+    const clean = await packs.findOne({ applicationId: "app-1025", scenarioId: "clean" });
+    const disputed = await packs.findOne({ applicationId: "app-1025", scenarioId: "disputed_invoice" });
+    const lowBureau = await packs.findOne({ applicationId: "app-1025", scenarioId: "low_bureau" });
+    const returnedCheques = await packs.findOne({ applicationId: "app-1025", scenarioId: "returned_cheques" });
+
+    expect(clean).toMatchObject({ sources: {
+      "ZATCA e-invoice verification": { productType: "invoice_financing", clearanceStatus: "Cleared", buyerDispute: false, invoiceEligibility: "Eligible — no dispute recorded" },
+      "Open banking cash flow": { productType: "invoice_financing", returnedCheques: 1 },
+    } });
+    expect(disputed).toMatchObject({ sources: { "ZATCA e-invoice verification": {
+      sourceScenario: "disputed_invoice", productType: "invoice_financing", clearanceStatus: "Not cleared — buyer dispute recorded", buyerDispute: true, invoiceEligibility: "Ineligible while disputed",
+    } } });
+    expect(lowBureau).toMatchObject({ sources: { "SIMAH credit bureau": { sourceScenario: "low_bureau", commercialScore: 528 } } });
+    expect(returnedCheques).toMatchObject({ sources: { "Open banking cash flow": { sourceScenario: "returned_cheques", returnedCheques: 5 } } });
+  });
 });
