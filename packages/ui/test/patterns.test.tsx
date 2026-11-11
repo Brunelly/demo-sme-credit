@@ -7,11 +7,19 @@ import {
   DataTable,
   DocumentDropzone,
   DocumentList,
+  ErrorState,
   KpiTile,
   RunTimeline,
   formatBytes,
   type Column,
 } from "../src/index.ts";
+
+describe("ErrorState", () => {
+  it("supports a localized retry label", () => {
+    render(<ErrorState message="تعذر تحميل البيانات" onRetry={() => {}} retryLabel="أعد المحاولة" />);
+    expect(screen.getByRole("button", { name: "أعد المحاولة" })).toBeInTheDocument();
+  });
+});
 
 interface Row {
   id: string;

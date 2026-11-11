@@ -63,10 +63,11 @@ export interface ErrorStateProps {
   /** What went wrong, in words a person can act on. */
   message: ReactNode;
   onRetry?: () => void;
+  retryLabel?: string;
   compact?: boolean;
 }
 
-export function ErrorState({ title = "Something went wrong", message, onRetry, compact = false }: ErrorStateProps) {
+export function ErrorState({ title = "Something went wrong", message, onRetry, retryLabel = "Try again", compact = false }: ErrorStateProps) {
   return (
     <div className={cx(styles.state, styles.error, compact && styles.compact)} role="alert">
       <span className={styles.icon} aria-hidden="true">
@@ -77,7 +78,7 @@ export function ErrorState({ title = "Something went wrong", message, onRetry, c
       {onRetry && (
         <div className={styles.action}>
           <Button size="sm" icon={<RefreshCw size={14} />} onClick={onRetry}>
-            Try again
+            {retryLabel}
           </Button>
         </div>
       )}
