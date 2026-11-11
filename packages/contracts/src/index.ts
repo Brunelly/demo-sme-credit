@@ -4,3 +4,4 @@ export * from "./errors.ts";
 export * from "./health.ts";
 export * from "./assistant.ts";
 export * from "./applications.ts";
+export * from "./reviews.ts";

@@ -20,6 +20,7 @@
     "viewports": ["desktop", "phone"],
     "routes": [
       { "path": "/", "name": "Applications" },
+      { "path": "/reviews", "name": "Review queue" },
       { "path": "/settings", "name": "Settings" }
     ]
   },

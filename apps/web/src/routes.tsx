@@ -5,6 +5,7 @@ import { KitPage } from "./pages/KitPage.tsx";
 import { NotFoundPage } from "./pages/NotFoundPage.tsx";
 import { RouteError } from "./pages/RouteError.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
+import { ReviewsPage } from "./pages/ReviewsPage.tsx";
 
 /**
  * Every page, by path. The app lives at the site root ("/"), never under a base path, and calls the API at
@@ -21,6 +22,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <HomePage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "reviews", element: <ReviewsPage /> },
       ...(import.meta.env.DEV ? [{ path: "kit", element: <KitPage /> }] : []),
       { path: "*", element: <NotFoundPage /> },
     ],
