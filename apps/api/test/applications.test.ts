@@ -27,6 +27,9 @@ describe("applications queue", () => {
     expect(response.body.results).toHaveLength(4);
     expect(response.body.results.map((result: { clause: string }) => result.clause)).toEqual(["SME-CP-07 §3.1", "SME-CP-07 §3.2", "SME-CP-07 §3.3", "SME-CP-07 §3.4"]);
     expect(response.body.results.find((result: { specialist: string }) => result.specialist.startsWith("ZATCA"))).toMatchObject({ outcome: "refer" });
+    expect(response.body.recommendation).toMatchObject({ outcome: "Refer", authorityClause: "SME-CP-07 §7.1" });
+    expect(response.body.recommendation.reasons).toContainEqual(expect.objectContaining({ clause: "SME-CP-07 §§4.1, 4.5", evidence: expect.stringContaining("INV-99") }));
+    expect(response.body.recommendation.reviewerChallenges).toContainEqual(expect.objectContaining({ specialist: "ZATCA e-invoice verification", status: "challenge" }));
     expect((await request(testApp(mongo.db)).get("/api/applications/case-1/checks").expect(200)).body.latest.id).toBe(response.body.id);
   });
 
@@ -36,5 +39,18 @@ describe("applications queue", () => {
     const changed = await request(testApp(mongo.db, { config: { simulatedDataScenario: "low_bureau" } })).post("/api/applications/case-2/checks").send({}).expect(201);
     expect(clean.body.results[0].outcome).toBe("pass");
     expect(changed.body.results[0].outcome).toBe("refer");
+  });
+
+  it("changes the recommendation by selected scenario and records an Appendix A override", async () => {
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertOne({ _id: "case-3", businessName: "Sample Packaging", businessNameArabic: "تعبئة تجريبية", commercialRegistration: "1010000088", product: "working_capital", amountSar: 1000000, stage: "decision_required", receivedAt: new Date(), city: "Riyadh", sampleData: true, annualRevenueSar: 12000000, riskGrade: "B" });
+    const app = testApp(mongo.db);
+    const clean = await request(app).post("/api/applications/case-3/checks").send({ scenario: "clean" }).expect(201);
+    const declined = await request(app).post("/api/applications/case-3/checks").send({ scenario: "ineligible_revenue" }).expect(201);
+    expect(clean.body.recommendation.outcome).toBe("Approve");
+    expect(declined.body.recommendation.outcome).toBe("Decline");
+
+    const overridden = await request(app).post(`/api/applications/case-3/checks/${declined.body.id}/override`).send({ outcome: "Refer", reason: "Data quality issue in a source check", rationale: "Financial statements are being corrected by the applicant." }).expect(201);
+    expect(overridden.body.recommendation.override).toMatchObject({ outcome: "Refer", reason: "Data quality issue in a source check", recordedBy: "Credit analyst" });
+    expect((await request(app).get("/api/applications/case-3/checks").expect(200)).body.latest.recommendation.override.outcome).toBe("Refer");
   });
 });
