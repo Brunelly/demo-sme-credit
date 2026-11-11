@@ -239,7 +239,7 @@ function AssessmentRun({ applicationId, run, latest, onUpdated }: { applicationI
                 <div className={styles.reviewLine}>
                   <MessageSquareWarning size={16} />
                   <div>
-                    <strong>Independent reviewer · {review.status === "accepted" ? "Accepted first pass" : "Challenge recorded"}</strong>
+                    <strong>Independent reviewer · {review.status === "accepted" ? "Accepted first pass" : review.status === "human_review" ? "Human review required" : "Challenge recorded"}</strong>
                     <p>{review.conclusion}</p>
                     {review.evidenceGap && (
                       <p>
@@ -464,6 +464,12 @@ function RecommendationReasonTree({ reason, run, index }: { reason: Recommendati
                     <p>
                       <b>Final finding:</b> {finding.plainLanguageFinding}
                     </p>
+                  </>
+                ) : review?.status === "human_review" ? (
+                  <>
+                    <strong>Human review required: {review.conclusion}</strong>
+                    {review.evidenceGap && <p>{review.evidenceGap} {review.policyCitation}</p>}
+                    <p>The finding cannot be treated as supported until an analyst resolves the evidence gap.</p>
                   </>
                 ) : (
                   <>

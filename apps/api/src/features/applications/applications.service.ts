@@ -54,7 +54,8 @@ export class ApplicationsService {
     if (!await this.sources.get(applicationId, this.scenario)) throw new ValidationError("No simulated source pack is available for this application and scenario.");
     const now = new Date().toISOString();
     const run = { id: randomUUID(), applicationId, scenarioId: this.scenario, status: "running", startedAt: now, completedAt: null, specialistFindings: [], reviewerChallenges: [], revisedFindings: [], finalRecommendation: null, failureReason: null, createdBy: "Credit analyst", steps: workflowSteps(), ...this.longRunning.lease() } as ApplicationCheckRun;
-    await this.checks.record(run); void this.process(run.id); return run;
+    if (!await this.checks.record(run)) throw new ConflictError("An assessment is already running for this application.");
+    void this.process(run.id); return run;
   }
   async process(runId: string): Promise<void> {
     const held = this.longRunning.held();
@@ -79,6 +80,11 @@ export class ApplicationsService {
         const result = await this.ai.runInteraction("review-specialist-finding", { finding: JSON.stringify({ finding, assignedSource: pack.sources[finding.specialistType], simulated: true }) });
         const review: ReviewerChallenge = { id: randomUUID(), findingId: finding.id, specialistType: finding.specialistType, ...parseAi(reviewResultSchema, result.output, "The independent reviewer"), createdAt: new Date().toISOString(), maitentoRunId: result.runId };
         await this.requireHeld(await this.checks.addReview(runId, held, review)); reviews.push(review);
+        if (review.status === "human_review") {
+          finding.outcome = "human_review";
+          finding.plainLanguageFinding = review.conclusion;
+          await this.requireHeld(await this.checks.requireHumanReview(runId, held, finding.id, review.conclusion));
+        }
         await this.requireHeld(await this.checks.updateStep(runId, held, "reviewer", "running", review.createdAt, result.runId));
       }
       await this.requireHeld(await this.checks.updateStep(runId, held, "reviewer", "completed", new Date().toISOString()));

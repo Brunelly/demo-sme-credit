@@ -173,6 +173,25 @@ describe("SME Credit Desk", () => {
     expect(branch).not.toHaveAttribute("open");
     expect(screen.getByRole("heading", { name: "AI recommendation" })).toBeVisible();
   });
+  it("surfaces reviewer human review without presenting the finding as supported", async () => {
+    const humanReviewRun = {
+      ...run,
+      specialistFindings: [{ ...finding, outcome: "human_review", plainLanguageFinding: "The source record is malformed and requires analyst review." }],
+      reviewerChallenges: [{ ...run.reviewerChallenges[0], status: "human_review", conclusion: "A readable source record is required before this check can pass." }],
+      revisedFindings: [],
+      finalRecommendation: { ...run.finalRecommendation, reasons: [{ ...run.finalRecommendation.reasons[0], findingIds: ["f-1"] }] },
+    };
+    mockApi({
+      "GET /api/applications": () => applications,
+      "GET /api/applications/app-1/assessment-runs": () => ({ items: [humanReviewRun], simulatedData: true }),
+    });
+    renderAt("/");
+    expect((await screen.findAllByText("Human review required", { exact: false })).length).toBeGreaterThan(0);
+    expect(screen.getByText("Human review", { exact: true })).toBeVisible();
+    expect(screen.queryByText("Supported", { exact: true })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText("High risk requires committee review.", { selector: "summary strong" }));
+    expect(screen.getByRole("region", { name: "Reviewer pushback and re-pass" })).toHaveTextContent("The finding cannot be treated as supported until an analyst resolves the evidence gap.");
+  });
   it("renders a recorded override reason and rationale without template-literal dollar signs", async () => {
     const overridden = {
       ...run,
