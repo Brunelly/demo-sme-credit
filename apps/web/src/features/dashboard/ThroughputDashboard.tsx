@@ -41,7 +41,7 @@ function Summary({ data }: { data: ThroughputDashboardResponse }) {
       </div>
       <dl className={styles.legend}>{parts.map(part => <div key={part.key}><dt><i className={part.className} />{part.label}</dt><dd>{number.format(part.count)}</dd></div>)}</dl>
     </div>
-    <div className={styles.override}><span>AI overrides</span><strong>{data.override.ratePercent === null ? "—" : `${data.override.ratePercent.toFixed(1)}%`}</strong><small>{data.override.count} of {data.override.eligibleDecisions} final decisions</small></div>
+    <div className={styles.override}><span>Analyst overrides</span><strong>{data.override.ratePercent === null ? "—" : `${data.override.ratePercent.toFixed(1)}%`}</strong><small>{data.override.count} of {data.override.eligibleDecisions} final decisions</small></div>
   </section>;
 }
 
