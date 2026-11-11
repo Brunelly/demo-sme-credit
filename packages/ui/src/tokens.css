@@ -19,6 +19,7 @@
   --color-brand-text: #0f5b4b;
   /* Text and icons on a --color-brand background. */
   --color-on-brand: #ffffff;
+  --color-on-brand-muted: #8eb6ad;
 
   /* AI accent: marks what a model wrote (answers, summaries, suggestions), so people can tell. */
   --color-ai: #5b40c9;
@@ -115,6 +116,41 @@
   --duration-normal: 200ms;
   --duration-slow: 320ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-brand-hover: #146d5a;
+  --color-brand-active: #0b493d;
+  --color-brand-soft: #153d35;
+  --color-brand-text: #71c4b2;
+  --color-ai: #b5a7ee;
+  --color-ai-soft: #302b4a;
+  --color-bg: #111920;
+  --color-surface: #18232b;
+  --color-surface-muted: #1d2932;
+  --color-surface-sunken: #0d151b;
+  --color-surface-hover: #24333d;
+  --color-surface-inverse: #e9eef1;
+  --color-text: #e9eef1;
+  --color-text-muted: #b1bec6;
+  --color-text-subtle: #95a6b0;
+  --color-text-inverse: #101820;
+  --color-border: #34444f;
+  --color-border-strong: #50616c;
+  --color-overlay: rgb(3 8 12 / 0.72);
+  --color-success: #75d2a3;
+  --color-success-soft: #173d2c;
+  --color-warning: #f2bd6a;
+  --color-warning-soft: #443218;
+  --color-danger: #f08d9b;
+  --color-danger-soft: #46232a;
+  --color-info: #92b5ef;
+  --color-info-soft: #233653;
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.18);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.24), 0 1px 2px rgb(0 0 0 / 0.16);
+  --shadow-md: 0 6px 16px -4px rgb(0 0 0 / 0.42), 0 2px 4px rgb(0 0 0 / 0.22);
+  --shadow-lg: 0 24px 56px -16px rgb(0 0 0 / 0.62), 0 4px 12px rgb(0 0 0 / 0.32);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -37,11 +37,11 @@
 }
 
 .start {
-  text-align: left;
+  text-align: start;
 }
 
 .end {
-  text-align: right;
+  text-align: end;
 }
 
 .center {
@@ -95,7 +95,6 @@
 
   .table th,
   .table td {
-    padding-left: var(--space-3);
-    padding-right: var(--space-3);
+    padding-inline: var(--space-3);
   }
 }

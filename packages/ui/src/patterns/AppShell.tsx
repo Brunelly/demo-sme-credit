@@ -18,14 +18,15 @@ export interface AppShellProps {
   /** The right of the top bar: the user, a help link. */
   actions?: ReactNode;
   children: ReactNode;
+  skipLabel?: string;
 }
 
 /** The frame every page sits in: a top bar (brand, navigation, actions) over the page content. */
-export function AppShell({ brand, nav, actions, children }: AppShellProps) {
+export function AppShell({ brand, nav, actions, children, skipLabel = "Skip to content" }: AppShellProps) {
   return (
     <div className={styles.shell}>
       <a className={styles.skip} href="#main">
-        Skip to content
+        {skipLabel}
       </a>
       <header className={styles.topbar}>
         <div className={styles.brand}>

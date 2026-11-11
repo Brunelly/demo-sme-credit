@@ -2,6 +2,7 @@ import { render } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { vi } from "vitest";
 import { routes } from "../src/routes.tsx";
+import { PreferencesProvider } from "../src/lib/preferences.tsx";
 
 type Handler = (body: unknown, url: URL) => unknown;
 
@@ -43,5 +44,5 @@ export const status = (code: number, payload?: unknown) => new StatusResult(code
 /** Renders the whole app at a path, with the real routes. */
 export function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  return { router, ...render(<RouterProvider router={router} />) };
+  return { router, ...render(<PreferencesProvider><RouterProvider router={router} /></PreferencesProvider>) };
 }

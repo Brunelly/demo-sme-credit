@@ -1,0 +1,6 @@
+.switches { display: flex; align-items: center; gap: var(--space-2); }
+.switch { min-width: var(--control-height-md); min-height: var(--control-height-md); display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); padding: 0 var(--space-2); border: var(--border-width) solid var(--color-on-brand-muted); border-radius: var(--radius-sm); background: var(--color-brand-active); color: var(--color-on-brand); font-size: var(--text-xs); font-weight: var(--weight-semibold); cursor: pointer; }
+.switch:hover { background: var(--color-brand-hover); border-color: var(--color-on-brand); }
+.switch:focus-visible { outline: var(--border-width) solid var(--color-on-brand); outline-offset: 2px; box-shadow: none; }
+.switch svg { flex: none; }
+@media (max-width: 720px) { .switch span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } }
