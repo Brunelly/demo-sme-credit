@@ -12,22 +12,24 @@ describe("analyst review queue", () => {
     renderAt("/reviews");
     expect(await screen.findByRole("heading", { name: "Analyst review queue" })).toBeInTheDocument();
     expect(screen.getAllByText("Credit analyst, then a second analyst (four eyes)").length).toBeGreaterThan(0);
-    await userEvent.type(screen.getByLabelText("Analyst name"), "Maha Alotaibi");
+    expect(screen.getByLabelText("Record decision as")).toHaveDisplayValue("Maha Alotaibi — Credit analyst");
     await userEvent.click(screen.getByRole("button", { name: "Override" }));
     await userEvent.selectOptions(screen.getByLabelText("Appendix A reason"), "Relationship history with the Bank");
     await userEvent.type(screen.getByLabelText("Reason and notes"), "Documented repayment history supports approval.");
     await userEvent.click(screen.getByRole("button", { name: "Record override" }));
-    expect(api.calls).toContainEqual({ method: "POST", path: "/api/reviews/app-1007/decisions", search: "", body: { analystName: "Maha Alotaibi", expectedSequence: 1, decision: "override", notes: "Documented repayment history supports approval.", overrideReason: "Relationship history with the Bank", overrideOutcome: "Approve" } });
+    expect(api.calls).toContainEqual({ method: "POST", path: "/api/reviews/app-1007/decisions", search: "", body: { analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "override", notes: "Documented repayment history supports approval.", overrideReason: "Relationship history with the Bank", overrideOutcome: "Approve" } });
   });
 
   it("locks a pending decline to an independent decline review", async () => {
-    const pending = { ...item, recommendation: { ...item.recommendation, outcome: "Approve" }, decisions: [{ id: "d-1", applicationId: "app-1007", analystId: "user-17", analystName: "Maha Alotaibi", decision: "override", effectiveOutcome: "Decline", notes: "Evidence does not meet policy.", overrideReason: "Sector or market conditions", recordedAt: "2026-11-11T10:00:00Z", status: "awaiting_second_analyst", sequence: 1 }], queueStatus: "awaiting_second_analyst" };
+    const pending = { ...item, recommendation: { ...item.recommendation, outcome: "Approve" }, decisions: [{ id: "d-1", applicationId: "app-1007", analystId: "maha-alotaibi", analystName: "Maha Alotaibi", decision: "override", effectiveOutcome: "Decline", notes: "Evidence does not meet policy.", overrideReason: "Sector or market conditions", recordedAt: "2026-11-11T10:00:00Z", status: "awaiting_second_analyst", sequence: 1 }], queueStatus: "awaiting_second_analyst" };
     mockApi({ "GET /api/reviews": () => ({ items: [pending], sampleData: true }) }); renderAt("/reviews");
     expect(await screen.findByRole("heading", { name: "Independent decline review" })).toBeInTheDocument();
     const group = screen.getByRole("group", { name: "Decision" });
     expect(within(group).getByRole("button", { name: "Reject decline" })).toBeEnabled();
     expect(within(group).getByRole("button", { name: "Confirm decline" })).toBeEnabled();
     expect(screen.getByText("Evidence does not meet policy.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Record decision as")).toHaveDisplayValue("Faisal Alqahtani — Credit analyst");
+    expect(screen.queryByRole("option", { name: "Maha Alotaibi — Credit analyst" })).not.toBeInTheDocument();
   });
 
   it("clears case-specific notes, override selection and errors when another case is selected", async () => {
@@ -39,7 +41,6 @@ describe("analyst review queue", () => {
     await userEvent.selectOptions(screen.getByLabelText("Override outcome"), "Decline");
     await userEvent.selectOptions(screen.getByLabelText("Appendix A reason"), "Sector or market conditions");
     await userEvent.type(screen.getByLabelText("Reason and notes"), "These notes belong only to the first case.");
-    await userEvent.type(screen.getByLabelText("Analyst name"), "Maha Alotaibi");
     await userEvent.click(screen.getByRole("button", { name: "Record override" }));
     expect(await screen.findByText("Ledger unavailable")).toBeInTheDocument();
     await userEvent.click(screen.getByText("Sample Eastern Services"));

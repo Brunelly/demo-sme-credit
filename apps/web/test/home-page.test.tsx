@@ -37,6 +37,12 @@ describe("SME Credit Desk", () => {
     expect(branch).not.toHaveAttribute("open");
     expect(screen.getByRole("heading", { name: "AI recommendation" })).toBeVisible();
   });
+  it("renders a recorded override reason and rationale without template-literal dollar signs", async () => {
+    const overridden = { ...run, finalRecommendation: { ...run.finalRecommendation, override: { outcome: "Approve", reason: "Relationship history with the Bank", rationale: "Documented repayment performance supports approval.", recordedAt: at } } };
+    mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/assessment-runs": () => ({ items: [overridden], simulatedData: true }) }); renderAt("/");
+    expect(await screen.findByText("Relationship history with the Bank — Documented repayment performance supports approval.")).toBeInTheDocument();
+    expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
+  });
   it("runs an assessment, refreshes history, and exposes a safe failure", async () => {
     let items: unknown[] = []; const api = mockApi({ "GET /api/applications": () => applications, "GET /api/applications/app-1/assessment-runs": () => ({ items, simulatedData: true }), "POST /api/applications/app-1/assessment-runs": () => { items = [run]; return run; } }); renderAt("/");
     await userEvent.click(await screen.findByRole("button", { name: "Run assessment" }));

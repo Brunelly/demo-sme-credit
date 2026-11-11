@@ -3,8 +3,15 @@ import type { CreditApplication, CreditRecommendation, OverrideReason, Recommend
 
 export const analystDecisionSchema = z.enum(["approve", "refer", "decline", "override"]);
 export type AnalystDecision = z.infer<typeof analystDecisionSchema>;
+export const analystIdentities = [
+  { id: "maha-alotaibi", name: "Maha Alotaibi", role: "Credit analyst" },
+  { id: "faisal-alqahtani", name: "Faisal Alqahtani", role: "Credit analyst" },
+  { id: "noura-alharbi", name: "Noura Alharbi", role: "Senior credit officer" },
+] as const;
+export const analystIdentityIdSchema = z.enum(["maha-alotaibi", "faisal-alqahtani", "noura-alharbi"]);
+export type AnalystIdentityId = z.infer<typeof analystIdentityIdSchema>;
 export const recordDecisionSchema = z.object({
-  analystName: z.string().trim().min(2).max(100),
+  analystIdentityId: analystIdentityIdSchema,
   expectedSequence: z.union([z.literal(1), z.literal(2)]),
   decision: analystDecisionSchema,
   notes: z.string().trim().min(5).max(1000),
