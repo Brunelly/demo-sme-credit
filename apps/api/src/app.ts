@@ -6,6 +6,9 @@ import type { LongRunningWork } from "./db/long-running.ts";
 import { AssistantService } from "./features/assistant/assistant.service.ts";
 import { assistantRoutes } from "./features/assistant/assistant.routes.ts";
 import { healthRoutes } from "./features/health/health.routes.ts";
+import { ApplicationsRepository } from "./features/applications/applications.repository.ts";
+import { ApplicationsService } from "./features/applications/applications.service.ts";
+import { applicationsRoutes } from "./features/applications/applications.routes.ts";
 import { apiNotFound, errorHandler } from "./http/error-handler.ts";
 import { requestLogger } from "./http/request-logger.ts";
 import { RESERVED_PREFIX, reservedPaths } from "./http/reserved.ts";
@@ -39,10 +42,12 @@ export function createApp({ config, db, ai, longRunning, webDistDir }: AppDepend
   // Work that outlives its request (a background AI run, an import) also registers its collection, and its service
   // takes `longRunning` to lease each run: longRunning.register({ collection: REPORTS_COLLECTION }). See db/long-running.ts.
   const assistant = new AssistantService(ai);
+  const applications = new ApplicationsService(new ApplicationsRepository(db));
 
   const api = express.Router();
   api.use("/health", healthRoutes(db, ai));
   api.use("/assistant", assistantRoutes(assistant));
+  api.use("/applications", applicationsRoutes(applications));
   api.use(apiNotFound);
   app.use("/api", api);
 
