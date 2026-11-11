@@ -5,6 +5,7 @@ export const analystDecisionSchema = z.enum(["approve", "refer", "decline", "ove
 export type AnalystDecision = z.infer<typeof analystDecisionSchema>;
 export const recordDecisionSchema = z.object({
   analystName: z.string().trim().min(2).max(100),
+  expectedSequence: z.union([z.literal(1), z.literal(2)]),
   decision: analystDecisionSchema,
   notes: z.string().trim().min(5).max(1000),
   overrideOutcome: z.enum(["Approve", "Refer", "Decline"]).optional(),
@@ -16,7 +17,7 @@ export const recordDecisionSchema = z.object({
 });
 
 export interface DecisionRecord {
-  id: string; applicationId: string; analystName: string; decision: AnalystDecision;
+  id: string; applicationId: string; analystId: string; analystName: string; decision: AnalystDecision;
   effectiveOutcome: RecommendationOutcome; notes: string; overrideReason?: OverrideReason;
   recordedAt: string; status: "recorded" | "awaiting_second_analyst" | "final";
   sequence: 1 | 2;

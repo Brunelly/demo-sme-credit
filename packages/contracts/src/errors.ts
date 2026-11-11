@@ -14,6 +14,7 @@ export type ErrorCode =
   | "validation_failed"
   | "not_found"
   | "conflict"
+  | "unauthorized"
   | "payload_too_large"
   | "reserved_path"
   | "ai_failed"

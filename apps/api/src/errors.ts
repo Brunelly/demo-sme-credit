@@ -42,6 +42,13 @@ export class ConflictError extends AppError {
   }
 }
 
+/** 401: the platform did not provide an authenticated person for an identity-sensitive action. */
+export class AuthenticationError extends AppError {
+  constructor(message: string) {
+    super(401, "unauthorized", message);
+  }
+}
+
 /** 500 with a message people can act on: an AI run failed or answered in the wrong shape. */
 export class AiFailedError extends AppError {
   constructor(message: string, options?: { cause?: unknown }) {
