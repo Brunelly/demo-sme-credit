@@ -184,6 +184,11 @@
     border-right: 0;
     border-bottom: var(--border-width) solid var(--color-border-strong);
   }
+
+  .casePane {
+    order: -1;
+    border-bottom: var(--border-width) solid var(--color-border-strong);
+  }
 }
 
 @media (max-width: 520px) {
