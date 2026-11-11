@@ -20,3 +20,11 @@ export const stageLabels: Record<ApplicationStage, { label: string; tone: Tone }
   decision_required: { label: "Decision required", tone: "warning" },
   referred: { label: "Referred", tone: "danger" },
 };
+
+export const arabicStageLabels: Record<ApplicationStage, string> = {
+  new: "جديد",
+  eligibility_review: "مراجعة الأهلية",
+  credit_assessment: "التقييم الائتماني",
+  decision_required: "بانتظار القرار",
+  referred: "محال للمراجعة",
+};
