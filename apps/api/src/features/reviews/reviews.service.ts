@@ -1,10 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { decisionAuthoritySchema, type AnalystIdentityId, type DecisionAuthority, type DecisionRecord } from "@app/contracts";
 import { AuthorizationError, ConflictError, NotFoundError, ValidationError } from "../../errors.ts";
+import type { AuthenticatedPrincipal } from "../../http/platform-auth.ts";
+import { logger } from "../../logger.ts";
 import type { ReviewsRepository } from "./reviews.repository.ts";
 import { decisionLedgerFilename, toDecisionLedgerCsv } from "./decision-ledger-csv.ts";
 
 type Input = { assessmentRunId: string; analystIdentityId: AnalystIdentityId; authenticatedProfileId: AnalystIdentityId; analystId: string; analystName: string; analystRole: "relationship_manager" | "credit_analyst" | "senior_credit_officer" | "credit_committee"; expectedSequence: 1 | 2; decision: "approve" | "refer" | "decline" | "override"; notes: string; overrideOutcome?: "Approve" | "Refer" | "Decline"; overrideReason?: DecisionRecord["overrideReason"] };
+
+/** Roles that work the review queue and may take the full decision ledger with them. */
+export const DECISION_LEDGER_ROLES: readonly AuthenticatedPrincipal["role"][] = ["credit_analyst", "senior_credit_officer", "credit_committee"];
 
 export class ReviewsService {
   private readonly repository: ReviewsRepository;
@@ -12,9 +17,15 @@ export class ReviewsService {
   list() { return this.repository.list(); }
 
   /** The full decision ledger as a downloadable CSV, named for the day the committee takes it away. */
-  async exportDecisionLedger(now: Date = new Date()): Promise<{ filename: string; csv: string }> {
+  async exportDecisionLedger(principal: AuthenticatedPrincipal, now: Date = new Date()): Promise<{ filename: string; csv: string }> {
+    if (!DECISION_LEDGER_ROLES.includes(principal.role)) {
+      throw new AuthorizationError("Your authenticated role cannot export the full decision ledger.");
+    }
     const rows = await this.repository.listDecisionLedger();
-    return { filename: decisionLedgerFilename(now), csv: toDecisionLedgerCsv(rows) };
+    const filename = decisionLedgerFilename(now);
+    const csv = toDecisionLedgerCsv(rows);
+    logger.info("decision ledger exported", { userId: principal.sub, principalId: principal.sub, profileId: principal.profileId, role: principal.role, rows: rows.length, filename });
+    return { filename, csv };
   }
 
   async decide(applicationId: string, input: Input): Promise<DecisionRecord> {

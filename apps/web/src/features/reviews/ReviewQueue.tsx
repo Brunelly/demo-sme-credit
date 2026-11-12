@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { analystIdentities, type AnalystDecision, type AnalystIdentityId, type OverrideReason, type ReviewQueueItem } from "@app/contracts";
 import { Alert, Badge, Button, CellStack, DataTable, EmptyState, ErrorState, Field, PageHeader, Select, Textarea } from "@app/ui";
 import { Check, CornerUpRight, Download, ShieldCheck, ThumbsDown } from "lucide-react";
-import { errorMessage } from "../../lib/api.ts";
+import { ApiError, errorMessage } from "../../lib/api.ts";
 import { getDecisionLedgerFile, getReviewQueue, recordDecision } from "./reviews.api.ts";
 import styles from "./ReviewQueue.module.css";
 import { usePreferences } from "../../lib/preferences.tsx";
@@ -44,8 +44,10 @@ export function ReviewQueue() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-    } catch {
-      setExportError(t("The decision ledger could not be downloaded. Try again."));
+    } catch (error) {
+      setExportError(error instanceof ApiError && error.status === 403
+        ? t("Your role does not have permission to export the decision ledger.")
+        : t("The decision ledger could not be downloaded. Try again."));
     } finally {
       setExporting(false);
     }
