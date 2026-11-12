@@ -71,6 +71,18 @@ async function seedLedger() {
       city: "Riyadh",
       sampleData: true,
     },
+    {
+      _id: "app-3",
+      businessName: "Sahil Logistics",
+      businessNameArabic: "سهيل اللوجستية",
+      commercialRegistration: "1010918742",
+      product: "working_capital",
+      amountSar: 950_000,
+      stage: "decision_required",
+      receivedAt: new Date("2026-11-06T07:30:00Z"),
+      city: "Jeddah",
+      sampleData: true,
+    },
   ]);
   await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applicationCheckRuns").insertMany([
     {
@@ -86,6 +98,13 @@ async function seedLedger() {
       status: "completed",
       startedAt: "2026-11-10T08:00:00.000Z",
       finalRecommendation: { outcome: "Decline", decisionAuthority: "Credit analyst confirms", authorityClause: "SME-CP-07 §7.1" },
+    },
+    {
+      _id: "run-3",
+      applicationId: "app-3",
+      status: "completed",
+      startedAt: "2026-11-09T08:00:00.000Z",
+      finalRecommendation: { outcome: "Decline", decisionAuthority: "Credit analyst, then a second analyst (four eyes)", authorityClause: "SME-CP-07 §7.1" },
     },
   ]);
   await mongo.db.collection<{ _id: string; [key: string]: unknown }>("creditDecisions").insertMany([
@@ -118,6 +137,20 @@ async function seedLedger() {
       sequence: 1,
       ledgerSlot: 1,
     },
+    {
+      _id: "decision-pending",
+      applicationId: "app-3",
+      assessmentRunId: "run-3",
+      analystId: "platform-user-17",
+      analystName: "Maha Alotaibi",
+      decision: "decline",
+      effectiveOutcome: "Decline",
+      notes: "Bureau evidence does not meet policy; awaiting independent confirmation.",
+      recordedAt: "2026-11-11T09:15:00.000Z",
+      status: "awaiting_second_analyst",
+      sequence: 1,
+      ledgerSlot: 1,
+    },
   ]);
 }
 
@@ -131,15 +164,16 @@ describe("decision ledger CSV export", () => {
     expect(response.headers["cache-control"]).toBe("no-store, private");
     expect(response.headers.pragma).toBe("no-cache");
     const rows = parseCsv(response.text);
-    expect(rows).toHaveLength(3);
-    expect(rows[0]).toEqual(["Application reference", "Applicant", "Decided by", "Outcome", "Override reason", "Policy clause", "Decided at"]);
-    expect(rows[1]).toEqual(["APP-2", 'Al Nakhil Packaging, "Riyadh"', "Faisal Alqahtani", "Approve", "Relationship history with the Bank", "SME-CP-07 §7.1", "2026-11-11T14:32:00.000Z"]);
-    expect(rows[2]).toEqual(["APP-1", "Rawafid Industrial Supplies", "Maha Alotaibi", "Decline", "", "", "2026-11-10T09:05:00.000Z"]);
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toEqual(["Application reference", "Applicant", "Decided by", "Outcome", "Status", "Override reason", "Policy clause", "Decided at"]);
+    expect(rows[1]).toEqual(["APP-2", 'Al Nakhil Packaging, "Riyadh"', "Faisal Alqahtani", "Approve", "Final", "Relationship history with the Bank", "SME-CP-07 §7.1", "2026-11-11T14:32:00.000Z"]);
+    expect(rows[2]).toEqual(["APP-3", "Sahil Logistics", "Maha Alotaibi", "Pending second analyst", "Awaiting second analyst", "", "", "2026-11-11T09:15:00.000Z"]);
+    expect(rows[3]).toEqual(["APP-1", "Rawafid Industrial Supplies", "Maha Alotaibi", "Decline", "Final", "", "", "2026-11-10T09:05:00.000Z"]);
   });
 
   it("returns only the header when the ledger is empty", async () => {
     const response = await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").set("authorization", bearer("maha-alotaibi", "platform-user-17")).expect(200);
-    expect(parseCsv(response.text)).toEqual([["Application reference", "Applicant", "Decided by", "Outcome", "Override reason", "Policy clause", "Decided at"]]);
+    expect(parseCsv(response.text)).toEqual([["Application reference", "Applicant", "Decided by", "Outcome", "Status", "Override reason", "Policy clause", "Decided at"]]);
   });
 
   it("answers 401 with no file when there is no signed-in principal", async () => {
@@ -159,7 +193,7 @@ describe("decision ledger CSV export", () => {
   it("lets analysts, senior credit officers and the credit committee export", async () => {
     for (const role of ["credit_analyst", "senior_credit_officer", "credit_committee"] as const) {
       const response = await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").set("authorization", bearer("noura-alharbi", `platform-user-${role}`, role)).expect(200);
-      expect(parseCsv(response.text)[0]).toEqual(["Application reference", "Applicant", "Decided by", "Outcome", "Override reason", "Policy clause", "Decided at"]);
+      expect(parseCsv(response.text)[0]).toEqual(["Application reference", "Applicant", "Decided by", "Outcome", "Status", "Override reason", "Policy clause", "Decided at"]);
     }
   });
 
@@ -177,5 +211,17 @@ describe("decision ledger CSV export", () => {
     expect(escapeCsvCell("Line one\nLine two")).toBe('"Line one\nLine two"');
     expect(escapeCsvCell(undefined)).toBe("");
     expect(decisionLedgerFilename(new Date("2026-11-11T23:59:00Z"))).toBe("decision-ledger-2026-11-11.csv");
+  });
+
+  it("treats a cell beginning with a spreadsheet formula character as literal text", () => {
+    expect(escapeCsvCell("=SUM(A1:A9)")).toBe("'=SUM(A1:A9)");
+    expect(escapeCsvCell("+966 11 000 0000")).toBe("'+966 11 000 0000");
+    expect(escapeCsvCell("-Al Nakhil")).toBe("'-Al Nakhil");
+    expect(escapeCsvCell("@supplier")).toBe("'@supplier");
+    expect(escapeCsvCell("\t=cmd")).toBe("'\t=cmd");
+    expect(escapeCsvCell('=Al Nakhil, "Riyadh"')).toBe(`"'=Al Nakhil, ""Riyadh"""`);
+    for (const value of ["=1+1", "+1", "-1", "@x", "\t=1"]) {
+      expect(escapeCsvCell(value)).toMatch(/^'/);
+    }
   });
 });

@@ -19,6 +19,7 @@ export interface DecisionLedgerRow {
   applicantName: string;
   decidedBy: string;
   outcome: DecisionRecord["effectiveOutcome"];
+  status: DecisionRecord["status"];
   overrideReason?: DecisionRecord["overrideReason"];
   policyClause?: string;
   decidedAt: string;
@@ -70,6 +71,7 @@ export class ReviewsRepository {
         applicantName: application?.businessName ?? decision.applicationId,
         decidedBy: decision.analystName,
         outcome: decision.effectiveOutcome,
+        status: decision.status,
         ...(decision.overrideReason ? { overrideReason: decision.overrideReason } : {}),
         ...(policyClause ? { policyClause } : {}),
         decidedAt: toIsoTimestamp(decision.recordedAt),
