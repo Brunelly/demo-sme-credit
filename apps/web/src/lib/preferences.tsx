@@ -42,6 +42,7 @@ const translations = {
   "Export CSV": "تصدير CSV",
   "Export failed": "تعذر التصدير",
   "The decision ledger could not be downloaded. Try again.": "تعذر تنزيل سجل القرارات. أعد المحاولة.",
+  "Your role does not have permission to export the decision ledger.": "لا يسمح دورك بتصدير سجل القرارات.",
   "Use dark theme": "استخدام النسق الداكن",
   "Use light theme": "استخدام النسق الفاتح",
 } as const;

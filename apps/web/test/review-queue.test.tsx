@@ -42,6 +42,23 @@ describe("analyst review queue", () => {
     expect(screen.queryByRole("link", { name: /CSV/i })).not.toBeInTheDocument();
   });
 
+  it("shows an inline permission message and no file when the role may not export", async () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    mockApi({
+      "GET /api/reviews": () => ({ items: [item], sampleData: true }),
+      "GET /api/reviews/decisions.csv": () => status(403, { error: { code: "forbidden", message: "Your authenticated role cannot export the full decision ledger." } }),
+    });
+    renderAt("/reviews");
+    await userEvent.click(await screen.findByRole("button", { name: "Export CSV" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your role does not have permission to export the decision ledger.");
+    expect(click).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Switch to Arabic" }));
+    await userEvent.click(screen.getByRole("button", { name: "تصدير CSV" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("لا يسمح دورك بتصدير سجل القرارات.");
+    vi.restoreAllMocks();
+  });
+
   it("names the export in Arabic right to left", async () => {
     mockApi({ "GET /api/reviews": () => ({ items: [item], sampleData: true }) });
     renderAt("/reviews");

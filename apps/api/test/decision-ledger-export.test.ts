@@ -1,9 +1,11 @@
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { decisionLedgerFilename, escapeCsvCell } from "../src/features/reviews/decision-ledger-csv.ts";
-import { testApp, useTestDatabase } from "./helpers.ts";
+import { logger } from "../src/logger.ts";
+import { platformToken, testApp, useTestDatabase } from "./helpers.ts";
 
 const mongo = useTestDatabase();
+const bearer = (profileId: "maha-alotaibi" | "faisal-alqahtani" | "noura-alharbi", subject: string, role?: "relationship_manager" | "credit_analyst" | "senior_credit_officer" | "credit_committee") => `Bearer ${platformToken(profileId, subject, role)}`;
 
 /** A small RFC 4180 reader so the test proves quoted commas stay in one cell. */
 function parseCsv(input: string): string[][] {
@@ -122,10 +124,12 @@ async function seedLedger() {
 describe("decision ledger CSV export", () => {
   it("downloads the full ledger newest first with override and policy columns", async () => {
     await seedLedger();
-    const response = await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").expect(200);
+    const response = await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").set("authorization", bearer("maha-alotaibi", "platform-user-17")).expect(200);
 
     expect(response.headers["content-type"]).toBe("text/csv; charset=utf-8");
     expect(response.headers["content-disposition"]).toMatch(/^attachment; filename="decision-ledger-\d{4}-\d{2}-\d{2}\.csv"$/);
+    expect(response.headers["cache-control"]).toBe("no-store, private");
+    expect(response.headers.pragma).toBe("no-cache");
     const rows = parseCsv(response.text);
     expect(rows).toHaveLength(3);
     expect(rows[0]).toEqual(["Application reference", "Applicant", "Decided by", "Outcome", "Override reason", "Policy clause", "Decided at"]);
@@ -134,8 +138,37 @@ describe("decision ledger CSV export", () => {
   });
 
   it("returns only the header when the ledger is empty", async () => {
-    const response = await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").expect(200);
+    const response = await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").set("authorization", bearer("maha-alotaibi", "platform-user-17")).expect(200);
     expect(parseCsv(response.text)).toEqual([["Application reference", "Applicant", "Decided by", "Outcome", "Override reason", "Policy clause", "Decided at"]]);
+  });
+
+  it("answers 401 with no file when there is no signed-in principal", async () => {
+    await seedLedger();
+    const response = await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").expect(401);
+    expect(response.body.error.code).toBe("unauthorized");
+    expect(response.text).not.toContain("Application reference");
+  });
+
+  it("answers 403 with no file when the signed-in role may not see the review queue", async () => {
+    await seedLedger();
+    const response = await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").set("authorization", bearer("maha-alotaibi", "platform-user-17", "relationship_manager")).expect(403);
+    expect(response.body.error.code).toBe("forbidden");
+    expect(response.text).not.toContain("Application reference");
+  });
+
+  it("lets analysts, senior credit officers and the credit committee export", async () => {
+    for (const role of ["credit_analyst", "senior_credit_officer", "credit_committee"] as const) {
+      const response = await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").set("authorization", bearer("noura-alharbi", `platform-user-${role}`, role)).expect(200);
+      expect(parseCsv(response.text)[0]).toEqual(["Application reference", "Applicant", "Decided by", "Outcome", "Override reason", "Policy clause", "Decided at"]);
+    }
+  });
+
+  it("logs each successful export with the acting user id", async () => {
+    await seedLedger();
+    const info = vi.spyOn(logger, "info");
+    await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").set("authorization", bearer("noura-alharbi", "platform-user-42", "senior_credit_officer")).expect(200);
+    expect(info).toHaveBeenCalledWith("decision ledger exported", expect.objectContaining({ userId: "platform-user-42" }));
+    vi.restoreAllMocks();
   });
 
   it("quotes separators, quotes and line breaks in one cell", () => {
