@@ -45,8 +45,34 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
   return payload as T;
 }
 
+export interface DownloadedFile {
+  blob: Blob;
+  /** The server's suggested file name from Content-Disposition, when it sends one. */
+  filename?: string;
+}
+
+const filenameFromDisposition = (header: string | null): string | undefined =>
+  /filename="?([^";]+)"?/i.exec(header ?? "")?.[1];
+
+async function requestFile(path: string, signal?: AbortSignal): Promise<DownloadedFile> {
+  let response: Response;
+  try {
+    response = await fetch(path, { headers: { Accept: "text/csv" }, signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new ApiError(0, "network_error", "Can't reach the server. Check your connection and try again.");
+  }
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    const error = (payload as Partial<ApiErrorBody> | null)?.error;
+    throw new ApiError(response.status, error?.code ?? "internal_error", error?.message ?? `The server answered ${response.status}.`, error?.details);
+  }
+  return { blob: await response.blob(), filename: filenameFromDisposition(response.headers.get("content-disposition")) };
+}
+
 export const api = {
   get: <T>(path: string, signal?: AbortSignal) => request<T>("GET", path, undefined, signal),
+  getFile: (path: string, signal?: AbortSignal) => requestFile(path, signal),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body ?? {}),
   patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
   put: <T>(path: string, body: unknown) => request<T>("PUT", path, body),

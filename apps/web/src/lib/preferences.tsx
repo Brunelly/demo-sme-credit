@@ -39,6 +39,9 @@ const translations = {
   "Sample review data": "بيانات مراجعة تجريبية",
   "These cases are illustrative and labelled for the demonstration.": "هذه الحالات توضيحية وموسومة لأغراض العرض.",
   "Oldest received first": "الأقدم استلاماً أولاً",
+  "Export CSV": "تصدير CSV",
+  "Export failed": "تعذر التصدير",
+  "The decision ledger could not be downloaded. Try again.": "تعذر تنزيل سجل القرارات. أعد المحاولة.",
   "Use dark theme": "استخدام النسق الداكن",
   "Use light theme": "استخدام النسق الفاتح",
 } as const;

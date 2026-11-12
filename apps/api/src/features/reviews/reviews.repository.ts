@@ -13,6 +13,17 @@ interface DecisionDocument extends Omit<DecisionRecord, "id"> { _id: string; led
 interface ApplicationDocument extends Omit<CreditApplication, "id" | "receivedAt"> { _id: string; receivedAt: Date; sampleData: boolean }
 interface RunDocument { _id: string; applicationId: string; status: string; startedAt?: string; finalRecommendation?: CreditRecommendation; recommendation?: CreditRecommendation }
 
+/** One row of the exported decision ledger, already joined to the application and assessment it belongs to. */
+export interface DecisionLedgerRow {
+  applicationReference: string;
+  applicantName: string;
+  decidedBy: string;
+  outcome: DecisionRecord["effectiveOutcome"];
+  overrideReason?: DecisionRecord["overrideReason"];
+  policyClause?: string;
+  decidedAt: string;
+}
+
 export class ReviewsRepository {
   private readonly db: Db;
   constructor(db: Db) { this.db = db; }
@@ -31,6 +42,39 @@ export class ReviewsRepository {
   async listDecisions(applicationId: string, assessmentRunId: string): Promise<DecisionRecord[]> {
     const rows = await this.db.collection<DecisionDocument>(DECISIONS_COLLECTION).find({ applicationId, assessmentRunId }).sort({ recordedAt: 1, _id: 1 }).limit(20).toArray();
     return rows.map(({ _id, ledgerSlot: _ledgerSlot, ...row }) => ({ id: _id, ...row }));
+  }
+
+  /** The whole ledger, newest decision first, for the review queue's CSV export. */
+  async listDecisionLedger(): Promise<DecisionLedgerRow[]> {
+    const decisions = await this.db.collection<DecisionDocument>(DECISIONS_COLLECTION).find({}).sort({ recordedAt: -1, _id: -1 }).toArray();
+    if (decisions.length === 0) return [];
+
+    const applicationIds = [...new Set(decisions.map((decision) => decision.applicationId))];
+    const runIds = [...new Set(decisions.map((decision) => decision.assessmentRunId).filter((id): id is string => Boolean(id)))];
+    const [applications, runs] = await Promise.all([
+      this.db.collection<ApplicationDocument>("applications").find({ _id: { $in: applicationIds } }).toArray(),
+      runIds.length > 0
+        ? this.db.collection<RunDocument>("applicationCheckRuns").find({ _id: { $in: runIds } }).toArray()
+        : Promise.resolve([] as RunDocument[]),
+    ]);
+    const applicationById = new Map(applications.map((application) => [application._id, application]));
+    const runById = new Map(runs.map((run) => [run._id, run]));
+
+    return decisions.map((decision) => {
+      const application = applicationById.get(decision.applicationId);
+      const run = decision.assessmentRunId ? runById.get(decision.assessmentRunId) : undefined;
+      const recommendation = run?.finalRecommendation ?? run?.recommendation;
+      const policyClause = decision.overrideReason ? (recommendation?.authorityClause ?? "SME-CP-07 §7.1") : undefined;
+      return {
+        applicationReference: decision.applicationId.toUpperCase(),
+        applicantName: application?.businessName ?? decision.applicationId,
+        decidedBy: decision.analystName,
+        outcome: decision.effectiveOutcome,
+        ...(decision.overrideReason ? { overrideReason: decision.overrideReason } : {}),
+        ...(policyClause ? { policyClause } : {}),
+        decidedAt: toIsoTimestamp(decision.recordedAt),
+      };
+    });
   }
 
   async insert(decision: DecisionRecord): Promise<void> {
@@ -57,4 +101,9 @@ export class ReviewsRepository {
     const { _id, receivedAt, sampleData: _sampleData, ...application } = row;
     return { application: { id: _id, receivedAt: receivedAt.toISOString(), ...application }, assessmentRunId: run._id, recommendation, authority: recommendation.decisionAuthority, authorityClause: "SME-CP-07 §7.1", decisions, queueStatus: pending ? "awaiting_second_analyst" : "awaiting_decision" };
   }
+}
+
+function toIsoTimestamp(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
 }

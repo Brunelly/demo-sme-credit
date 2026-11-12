@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { decisionAuthoritySchema, type AnalystIdentityId, type DecisionAuthority, type DecisionRecord } from "@app/contracts";
 import { AuthorizationError, ConflictError, NotFoundError, ValidationError } from "../../errors.ts";
 import type { ReviewsRepository } from "./reviews.repository.ts";
+import { decisionLedgerFilename, toDecisionLedgerCsv } from "./decision-ledger-csv.ts";
 
 type Input = { assessmentRunId: string; analystIdentityId: AnalystIdentityId; authenticatedProfileId: AnalystIdentityId; analystId: string; analystName: string; analystRole: "relationship_manager" | "credit_analyst" | "senior_credit_officer" | "credit_committee"; expectedSequence: 1 | 2; decision: "approve" | "refer" | "decline" | "override"; notes: string; overrideOutcome?: "Approve" | "Refer" | "Decline"; overrideReason?: DecisionRecord["overrideReason"] };
 
@@ -9,6 +10,12 @@ export class ReviewsService {
   private readonly repository: ReviewsRepository;
   constructor(repository: ReviewsRepository) { this.repository = repository; }
   list() { return this.repository.list(); }
+
+  /** The full decision ledger as a downloadable CSV, named for the day the committee takes it away. */
+  async exportDecisionLedger(now: Date = new Date()): Promise<{ filename: string; csv: string }> {
+    const rows = await this.repository.listDecisionLedger();
+    return { filename: decisionLedgerFilename(now), csv: toDecisionLedgerCsv(rows) };
+  }
 
   async decide(applicationId: string, input: Input): Promise<DecisionRecord> {
     const item = await this.repository.findAwaitingDecision(applicationId);

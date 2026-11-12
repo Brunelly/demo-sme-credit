@@ -23,6 +23,7 @@ export function mockApi(handlers: Record<string, Handler>) {
     const handler = handlers[`${method} ${url.pathname}`];
     if (!handler) throw new Error(`No mock for ${method} ${url.pathname}`);
     const result = handler(body, url);
+    if (result instanceof TextResult) return new Response(result.body, { status: 200, headers: result.headers });
     const { code, payload } = result instanceof StatusResult ? result : { code: 200, payload: result };
     return new Response(code === 204 ? null : JSON.stringify(payload), { status: code, headers: { "Content-Type": "application/json" } });
   });
@@ -40,6 +41,18 @@ class StatusResult {
 }
 
 export const status = (code: number, payload?: unknown) => new StatusResult(code, payload);
+
+class TextResult {
+  readonly body: string;
+  readonly headers: Record<string, string>;
+  constructor(body: string, headers: Record<string, string>) {
+    this.body = body;
+    this.headers = headers;
+  }
+}
+
+/** A non-JSON response, for downloads such as CSV. */
+export const text = (body: string, headers: Record<string, string> = {}) => new TextResult(body, headers);
 
 /** Renders the whole app at a path, with the real routes. */
 export function renderAt(path: string) {
