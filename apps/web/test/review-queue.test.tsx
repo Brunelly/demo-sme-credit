@@ -1,11 +1,54 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
-import { mockApi, renderAt, status } from "./helpers.tsx";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mockApi, renderAt, status, text } from "./helpers.tsx";
 
 const item = { application: { id: "app-1007", businessName: "Al Nakhil Packaging", businessNameArabic: "تغليف النخيل", commercialRegistration: "1010842763", product: "working_capital", amountSar: 1850000, stage: "decision_required", receivedAt: "2026-11-04T08:20:00.000Z", city: "Riyadh", riskGrade: "D" }, assessmentRunId: "run-1007", recommendation: { outcome: "Decline", riskGrade: "D", indicativeProfitRate: null, decisionAuthority: "Credit analyst, then a second analyst (four eyes)", authorityClause: "SME-CP-07 §7.1", notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1.", createdAt: "2026-11-11T08:40:00.000Z", reasons: [{ clause: "SME-CP-07 §6", conclusion: "The policy exception supports a decline recommendation.", evidence: "The reviewed bureau finding records elevated risk.", findingIds: [] }] }, authority: "Credit analyst, then a second analyst (four eyes)", authorityClause: "SME-CP-07 §7.1", decisions: [], queueStatus: "awaiting_decision" };
 
 describe("analyst review queue", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("exports the decision ledger as a dated CSV download", async () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const createObjectURL = vi.fn(() => "blob:decision-ledger");
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    const api = mockApi({
+      "GET /api/reviews": () => ({ items: [item], sampleData: true }),
+      "GET /api/reviews/decisions.csv": () => text("Application reference,Applicant\r\n", {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": 'attachment; filename="decision-ledger-2026-11-12.csv"',
+      }),
+    });
+    renderAt("/reviews");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Export CSV" }));
+
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect((click.mock.instances[0] as HTMLAnchorElement).download).toBe("decision-ledger-2026-11-12.csv");
+    expect((click.mock.instances[0] as HTMLAnchorElement).getAttribute("href")).toBe("blob:decision-ledger");
+    expect(api.calls).toContainEqual({ method: "GET", path: "/api/reviews/decisions.csv", search: "", body: undefined });
+    vi.restoreAllMocks();
+  });
+
+  it("shows a translated export failure without a raw link", async () => {
+    mockApi({
+      "GET /api/reviews": () => ({ items: [item], sampleData: true }),
+      "GET /api/reviews/decisions.csv": () => status(500, { error: { code: "internal_error", message: "Ledger unavailable" } }),
+    });
+    renderAt("/reviews");
+    await userEvent.click(await screen.findByRole("button", { name: "Export CSV" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Export failed");
+    expect(screen.queryByRole("link", { name: /CSV/i })).not.toBeInTheDocument();
+  });
+
+  it("names the export in Arabic right to left", async () => {
+    mockApi({ "GET /api/reviews": () => ({ items: [item], sampleData: true }) });
+    renderAt("/reviews");
+    await userEvent.click(await screen.findByRole("button", { name: "Switch to Arabic" }));
+    expect(screen.getByRole("button", { name: "تصدير CSV" })).toBeInTheDocument();
+  });
+
   it("shows authority and records an Appendix A override with analyst and notes", async () => {
     let queue = { items: [item], sampleData: true };
     const api = mockApi({ "GET /api/reviews": () => queue, "POST /api/reviews/app-1007/decisions": (body) => { queue = { items: [], sampleData: true }; return { id: "decision-1", applicationId: "app-1007", ...(body as object), effectiveOutcome: "Approve", recordedAt: "2026-11-11T10:00:00Z", status: "final", sequence: 1 }; } });

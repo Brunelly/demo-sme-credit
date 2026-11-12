@@ -1,6 +1,7 @@
 .page { display: grid; gap: var(--space-4); }
 .queueBar { min-height: var(--control-height-md); display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-3); border: var(--border-width) solid var(--color-border); background: var(--color-surface-muted); font-size: var(--text-sm); }
 .queueBar span { color: var(--color-text-muted); }
+.exportAction { margin-inline-start: auto; }
 .workbench { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(390px, .9fr); min-height: 680px; border: var(--border-width) solid var(--color-border); background: var(--color-surface); }
 .list { min-width: 0; border-inline-end: var(--border-width) solid var(--color-border); }
 .detail { min-width: 0; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
@@ -35,4 +36,4 @@
 .overrideFields { display: grid; grid-template-columns: minmax(120px, .45fr) minmax(0, 1fr); gap: var(--space-3); }
 .number { font-variant-numeric: tabular-nums; white-space: nowrap; }
 @media (max-width: 900px) { .workbench { grid-template-columns: 1fr; } .list { border-inline-end: 0; border-bottom: var(--border-width) solid var(--color-border); } }
-@media (max-width: 560px) { .queueBar, .caseHeader { align-items: flex-start; flex-direction: column; padding-block: var(--space-2); } .detail { padding: var(--space-3); } .facts, .overrideFields { grid-template-columns: 1fr; } .facts div, .facts div:nth-child(odd) { border-inline-end: 0; border-bottom: var(--border-width) solid var(--color-border); } .facts div:last-child { border-bottom: 0; } .actions > * { flex: 1 1 calc(50% - var(--space-2)); } }
+@media (max-width: 560px) { .queueBar, .caseHeader { align-items: flex-start; flex-direction: column; padding-block: var(--space-2); } .exportAction { margin-inline-start: 0; width: 100%; } .detail { padding: var(--space-3); } .facts, .overrideFields { grid-template-columns: 1fr; } .facts div, .facts div:nth-child(odd) { border-inline-end: 0; border-bottom: var(--border-width) solid var(--color-border); } .facts div:last-child { border-bottom: 0; } .actions > * { flex: 1 1 calc(50% - var(--space-2)); } }

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { analystIdentities, type AnalystDecision, type AnalystIdentityId, type OverrideReason, type ReviewQueueItem } from "@app/contracts";
 import { Alert, Badge, Button, CellStack, DataTable, EmptyState, ErrorState, Field, PageHeader, Select, Textarea } from "@app/ui";
-import { Check, CornerUpRight, ShieldCheck, ThumbsDown } from "lucide-react";
+import { Check, CornerUpRight, Download, ShieldCheck, ThumbsDown } from "lucide-react";
 import { errorMessage } from "../../lib/api.ts";
-import { getReviewQueue, recordDecision } from "./reviews.api.ts";
+import { getDecisionLedgerFile, getReviewQueue, recordDecision } from "./reviews.api.ts";
 import styles from "./ReviewQueue.module.css";
 import { usePreferences } from "../../lib/preferences.tsx";
 
@@ -16,6 +16,7 @@ export function ReviewQueue() {
   const [decision, setDecision] = useState<AnalystDecision>("approve"); const [analystIdentityId, setAnalystIdentityId] = useState<AnalystIdentityId>(analystIdentities[0].id);
   const [notes, setNotes] = useState(""); const [overrideReason, setOverrideReason] = useState<OverrideReason>(overrideReasons[0]);
   const [overrideOutcome, setOverrideOutcome] = useState<"Approve" | "Refer" | "Decline">("Approve"); const [saving, setSaving] = useState(false); const [formError, setFormError] = useState<string>();
+  const [exporting, setExporting] = useState(false); const [exportError, setExportError] = useState<string>();
   const selected = items.find((item) => item.application.id === selectedId) ?? items[0];
   async function load() { setLoading(true); setLoadError(undefined); try { const result = await getReviewQueue(); setItems(result.items); setSampleData(result.sampleData); setSelectedId((current) => result.items.some((item) => item.application.id === current) ? current : result.items[0]?.application.id); } catch (error) { setLoadError(errorMessage(error)); } finally { setLoading(false); } }
   useEffect(() => { void load(); }, []);
@@ -30,6 +31,25 @@ export function ReviewQueue() {
     setFormError(undefined);
   }, [selected?.application.id, selected?.queueStatus, selected?.recommendation.outcome]);
   async function submit(event: React.FormEvent) { event.preventDefault(); if (!selected) return; setSaving(true); setFormError(undefined); try { await recordDecision(selected.application.id, { assessmentRunId: selected.assessmentRunId, analystIdentityId, expectedSequence: selected.queueStatus === "awaiting_second_analyst" ? 2 : 1, decision, notes, ...(decision === "override" ? { overrideReason, overrideOutcome } : {}) }); setNotes(""); await load(); } catch (error) { setFormError(errorMessage(error)); } finally { setSaving(false); } }
+  async function exportLedger() {
+    setExporting(true); setExportError(undefined);
+    try {
+      const { blob, filename } = await getDecisionLedgerFile();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename ?? `decision-ledger-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.hidden = true;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportError(t("The decision ledger could not be downloaded. Try again."));
+    } finally {
+      setExporting(false);
+    }
+  }
   const columns = [
     { key: "case", header: locale === "ar" ? "الحالة" : "Case", render: (item: ReviewQueueItem) => <CellStack primary={locale === "ar" ? item.application.businessNameArabic : item.application.businessName} secondary={item.application.id.toUpperCase()} /> },
     { key: "amount", header: locale === "ar" ? "المبلغ" : "Amount", align: "end" as const, render: (item: ReviewQueueItem) => <bdi className={styles.number}>{money.format(item.application.amountSar)}</bdi> },
@@ -40,7 +60,8 @@ export function ReviewQueue() {
   return <div className={styles.page}>
     <PageHeader title={t("Analyst review queue")} description={t("Decide each recommendation under SME-CP-07 §7.1. Every action is written to the decision ledger.")} />
     {sampleData && <Alert tone="info" title={t("Sample review data")}>{t("These cases are illustrative and labelled for the demonstration.")}</Alert>}
-    <div className={styles.queueBar}><strong>{locale === "ar" ? `${items.length} بانتظار المراجعة` : `${items.length} awaiting review`}</strong><span>{t("Oldest received first")}</span></div>
+    <div className={styles.queueBar}><strong>{locale === "ar" ? `${items.length} بانتظار المراجعة` : `${items.length} awaiting review`}</strong><span>{t("Oldest received first")}</span><Button className={styles.exportAction} size="sm" icon={<Download size={15} />} loading={exporting} onClick={() => void exportLedger()}>{t("Export CSV")}</Button></div>
+    {exportError && <Alert tone="danger" title={t("Export failed")}>{exportError}</Alert>}
     <div className={styles.workbench}>
       <section className={styles.list} aria-label="Cases awaiting decision"><DataTable columns={columns} rows={items} rowKey={(item) => item.application.id} caption="Cases awaiting an analyst decision" loading={loading} error={loadError} onRetry={load} onRowClick={(item) => setSelectedId(item.application.id)} isRowSelected={(item) => item.application.id === selected?.application.id} empty={<EmptyState title="No cases awaiting review" description="New recommendations will appear here when they require a human decision." compact />} /></section>
       {loadError ? null : selected ? <section className={styles.detail} aria-label={`Decision for ${selected.application.businessName}`}>
