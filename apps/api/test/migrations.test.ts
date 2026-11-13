@@ -9,6 +9,12 @@ import {
   discoverMigrations,
   migrate,
 } from "../src/db/migrations.ts";
+import { up as loadSampleAssessmentTrails } from "../migrations/0014-load-sample-assessment-trails.ts";
+import {
+  validateRecommendationAgainstFindings,
+  validateRecommendationCitations,
+} from "../src/features/applications/applications.service.ts";
+import type { ApplicationProduct, ApplicationCheckRun, CreditApplication } from "@app/contracts";
 import { useTestDatabase } from "./helpers.ts";
 
 const mongo = useTestDatabase();
@@ -16,6 +22,8 @@ const mongo = useTestDatabase();
 /** Any document with a string id, for reading and poking at what migrations wrote. */
 type Doc = { _id: string; [field: string]: unknown };
 const collection = (name: string) => mongo.db.collection<Doc>(name);
+type ApplicationDoc = Omit<CreditApplication, "id" | "receivedAt"> & { _id: string; receivedAt: Date; sampleData?: boolean };
+type RunDoc = Omit<ApplicationCheckRun, "id"> & { _id: string; legacy?: boolean };
 
 // Each test writes its own migration files into a temporary folder.
 let dir: string;
@@ -172,5 +180,89 @@ describe("the app's own migrations", () => {
     } } });
     expect(lowBureau).toMatchObject({ sources: { "SIMAH credit bureau": { sourceScenario: "low_bureau", commercialScore: 528 } } });
     expect(returnedCheques).toMatchObject({ sources: { "Open banking cash flow": { sourceScenario: "returned_cheques", returnedCheques: 5 } } });
+  });
+});
+
+
+describe("sample assessment trails", () => {
+  it("seeds one complete trail for every seeded application past New and stays idempotent", async () => {
+    await migrate(mongo.db);
+    const applications = await mongo.db.collection<ApplicationDoc>("applications")
+      .find({ sampleData: true, stage: { $ne: "new" } })
+      .toArray();
+    expect(applications.length).toBeGreaterThan(0);
+
+    for (const application of applications) {
+      const runs = await mongo.db.collection<RunDoc>("applicationCheckRuns")
+        .find({ applicationId: application._id, sampleData: true, legacy: { $ne: true } })
+        .toArray();
+      expect(runs, `sample trails for ${application._id}`).toHaveLength(1);
+      const run = runs[0]!;
+      expect(run).toMatchObject({ status: "completed", sampleData: true });
+      expect(run.specialistFindings).toHaveLength(4);
+      expect(run.reviewerChallenges).toHaveLength(4);
+      expect(run.revisedFindings).toHaveLength(1);
+      expect(run.finalRecommendation).not.toBeNull();
+
+      for (const finding of run.specialistFindings) {
+        expect(finding.plainLanguageFinding.length).toBeGreaterThan(20);
+        expect(finding.evidence.length).toBeGreaterThan(0);
+        expect(finding.policyCitations.length).toBeGreaterThan(0);
+        expect(finding.policyCitations[0]).toMatch(/^SME-CP-07 §/);
+      }
+
+      const challenge = run.reviewerChallenges.find((review) => review.status === "challenge");
+      expect(challenge, `reviewer challenge for ${application._id}`).toBeTruthy();
+      expect(run.revisedFindings[0]!.specialistType).toBe(challenge!.specialistType);
+      expect(run.revisedFindings[0]!.revisionSummary).toBeTruthy();
+
+      const recommendation = run.finalRecommendation!;
+      expect(validateRecommendationCitations(recommendation, application.product as ApplicationProduct)).toBe(true);
+      const corrected = run.specialistFindings.map((finding) =>
+        run.revisedFindings.find((revision) => revision.specialistType === finding.specialistType) ?? finding);
+      expect(validateRecommendationAgainstFindings(recommendation, corrected)).toBe(true);
+
+      if (application.stage === "referred") {
+        expect(recommendation.outcome).toBe("Refer");
+        expect(recommendation.decisionAuthority).toBe("Credit analyst reviews the flagged checks");
+      }
+      if (application._id === "app-1007") {
+        expect(recommendation.outcome).toBe("Decline");
+        expect(recommendation.decisionAuthority).toBe("Credit analyst, then a second analyst (four eyes)");
+      }
+    }
+
+    const before = await mongo.db.collection("applicationCheckRuns").countDocuments({ sampleData: true });
+    await loadSampleAssessmentTrails(mongo.db);
+    await loadSampleAssessmentTrails(mongo.db);
+    const after = await mongo.db.collection("applicationCheckRuns").countDocuments({ sampleData: true });
+    expect(after).toBe(before);
+  });
+
+  it("does not add a sample trail to an application a person actually assessed", async () => {
+    await migrate(mongo.db);
+    await mongo.db.collection("applicationCheckRuns").deleteMany({ applicationId: "app-1011", sampleData: true });
+    const analystRun = {
+      _id: "analyst-run-app-1011",
+      applicationId: "app-1011",
+      scenarioId: "clean",
+      status: "completed",
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      specialistFindings: [],
+      reviewerChallenges: [],
+      revisedFindings: [],
+      finalRecommendation: null,
+      failureReason: null,
+      createdBy: "Credit analyst",
+    };
+    await collection("applicationCheckRuns").insertOne(analystRun);
+
+    await loadSampleAssessmentTrails(mongo.db);
+
+    const runs = await mongo.db.collection("applicationCheckRuns").find({ applicationId: "app-1011" }).toArray();
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ _id: "analyst-run-app-1011" });
+    expect(runs[0]!.sampleData).toBeUndefined();
   });
 });
