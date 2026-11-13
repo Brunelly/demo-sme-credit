@@ -255,14 +255,14 @@ describe("assessment trail refresh", () => {
       "GET /api/applications": () => applications,
       "GET /api/applications/app-1/assessment-runs": () => {
         requests += 1;
-        return requests === 1
-          ? { items: [runningRun], simulatedData: true }
-          : status(code, {
+        return requests === 2
+          ? status(code, {
               error: {
                 code: code === 401 ? "unauthorized" : "forbidden",
                 message: "This case is no longer available to you.",
               },
-            });
+            })
+          : { items: [runningRun], simulatedData: true };
       },
     });
 
@@ -273,7 +273,12 @@ describe("assessment trail refresh", () => {
     expect(await screen.findByText("Session ended", {}, { timeout: 2500 })).toBeVisible();
     expect(screen.queryByText(simahFinding.plainLanguageFinding)).not.toBeInTheDocument();
     expect(screen.queryByText("Facility")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByText(simahFinding.plainLanguageFinding)).toBeVisible();
+    expect(screen.getByText("Facility")).toBeVisible();
+    expect(screen.queryByText("Session ended")).not.toBeInTheDocument();
   });
 
   it("shows the not-found state and drops the trail when the case is gone", async () => {
