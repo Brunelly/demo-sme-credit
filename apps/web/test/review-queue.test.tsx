@@ -81,7 +81,7 @@ describe("analyst review queue", () => {
   });
 
   it("locks a pending decline to an independent decline review", async () => {
-    const pending = { ...item, recommendation: { ...item.recommendation, outcome: "Approve" }, decisions: [{ id: "d-1", applicationId: "app-1007", analystId: "maha-alotaibi", analystName: "Maha Alotaibi", decision: "override", effectiveOutcome: "Decline", notes: "Evidence does not meet policy.", overrideReason: "Sector or market conditions", recordedAt: "2026-11-11T10:00:00Z", status: "awaiting_second_analyst", sequence: 1 }], queueStatus: "awaiting_second_analyst" };
+    const pending = { ...item, recommendation: { ...item.recommendation, outcome: "Approve" }, decisions: [{ id: "d-1", applicationId: "app-1007", analystId: "platform-user-17", analystName: "Maha Alotaibi", decision: "override", effectiveOutcome: "Decline", notes: "Evidence does not meet policy.", overrideReason: "Sector or market conditions", recordedAt: "2026-11-11T10:00:00Z", status: "awaiting_second_analyst", sequence: 1 }], queueStatus: "awaiting_second_analyst" };
     mockApi({ "GET /api/reviews": () => ({ items: [pending], sampleData: true }) }); renderAt("/reviews");
     expect(await screen.findByRole("heading", { name: "Independent decline review" })).toBeInTheDocument();
     const group = screen.getByRole("group", { name: "Decision" });
@@ -90,6 +90,9 @@ describe("analyst review queue", () => {
     expect(screen.getByText("Evidence does not meet policy.")).toBeInTheDocument();
     expect(screen.getByLabelText("Record decision as")).toHaveDisplayValue("Faisal Alqahtani — Credit analyst");
     expect(screen.queryByRole("option", { name: "Maha Alotaibi — Credit analyst" })).not.toBeInTheDocument();
+    const secondAnalysts = within(screen.getByLabelText("Record decision as")).getAllByRole("option").map((option) => option.textContent);
+    expect(secondAnalysts).toHaveLength(2);
+    expect(new Set(secondAnalysts).size).toBe(secondAnalysts.length);
   });
 
   it("explains why a sample recommendation cannot become a final decision", async () => {
