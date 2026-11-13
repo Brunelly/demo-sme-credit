@@ -6,7 +6,7 @@ const bearer = (profileId: "maha-alotaibi" | "faisal-alqahtani" | "noura-alharbi
 
 const mongo = useTestDatabase();
 async function seed() {
-  await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertOne({ _id: "app-1", businessName: "Sample Trading", businessNameArabic: "شركة تجريبية", commercialRegistration: "1010000001", product: "working_capital", amountSar: 1800000, stage: "decision_required", receivedAt: new Date("2026-11-10T08:00:00Z"), city: "Riyadh", riskGrade: "B", sampleData: true });
+  await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertOne({ _id: "app-1", businessName: "Sample Trading", businessNameArabic: "شركة تجريبية", commercialRegistration: "1010000001", product: "working_capital", amountSar: 1800000, stage: "decision_required", receivedAt: new Date("2026-11-10T08:00:00Z"), city: "Riyadh", riskGrade: "B", sampleData: false });
   await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applicationCheckRuns").insertOne({ _id: "run-1", applicationId: "app-1", status: "completed", startedAt: "2026-11-10T09:00:00Z", finalRecommendation: { outcome: "Decline", riskGrade: "B", indicativeProfitRate: null, decisionAuthority: "Credit analyst, then a second analyst (four eyes)", authorityClause: "SME-CP-07 §7.1", reasons: [], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1.", createdAt: "2026-11-10T09:00:00Z" } });
 }
 
@@ -15,6 +15,27 @@ describe("review queue", () => {
     await seed();
     const response = await request(testApp(mongo.db)).get("/api/reviews").expect(200);
     expect(response.body.items[0]).toMatchObject({ application: { id: "app-1" }, assessmentRunId: "run-1", queueStatus: "awaiting_decision", authorityClause: "SME-CP-07 §7.1" });
+  });
+
+  it("refuses to record a decision from a sample or legacy simulated assessment", async () => {
+    await seed();
+    const decide = () => request(testApp(mongo.db)).post("/api/reviews/app-1/decisions").set("authorization", bearer("maha-alotaibi", "platform-user-17")).send({ assessmentRunId: "run-1", analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "decline", notes: "Bureau evidence does not meet policy." });
+
+    await mongo.db.collection("applications").updateOne({ _id: "app-1" } as never, { $set: { sampleData: true } } as never);
+    const applicationSample = await decide().expect(409);
+    expect(applicationSample.body.error.message).toContain("sample");
+    expect(await mongo.db.collection("creditDecisions").countDocuments()).toBe(0);
+
+    await mongo.db.collection("applications").updateOne({ _id: "app-1" } as never, { $set: { sampleData: false } } as never);
+    await mongo.db.collection("applicationCheckRuns").updateOne({ _id: "run-1" } as never, { $set: { sampleData: true } } as never);
+    const runSample = await decide().expect(409);
+    expect(runSample.body.error.message).toContain("sample");
+    expect(await mongo.db.collection("creditDecisions").countDocuments()).toBe(0);
+
+    await mongo.db.collection("applicationCheckRuns").updateOne({ _id: "run-1" } as never, { $set: { sampleData: false, legacy: true } } as never);
+    const legacy = await decide().expect(409);
+    expect(legacy.body.error.message).toContain("legacy simulated");
+    expect(await mongo.db.collection("creditDecisions").countDocuments()).toBe(0);
   });
 
   it("decides a queued application beyond the first 50 rows", async () => {
@@ -28,7 +49,7 @@ describe("review queue", () => {
       stage: "decision_required",
       receivedAt: new Date(`2026-11-09T${String(Math.floor(index / 60)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}:00Z`),
       city: "Riyadh",
-      sampleData: true,
+      sampleData: false,
     }));
     const runs = applications.map((application) => ({ _id: `run-${application._id}`, applicationId: application._id, status: "completed", startedAt: "2026-11-10T09:00:00Z", finalRecommendation: { outcome: "Approve", decisionAuthority: "Credit analyst confirms" } }));
     await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertMany(applications);

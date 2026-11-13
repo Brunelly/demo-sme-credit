@@ -11,7 +11,7 @@ export const decisionIndexes: IndexDescription[] = [
 ];
 interface DecisionDocument extends Omit<DecisionRecord, "id"> { _id: string; ledgerSlot?: number }
 interface ApplicationDocument extends Omit<CreditApplication, "id" | "receivedAt"> { _id: string; receivedAt: Date; sampleData: boolean }
-interface RunDocument { _id: string; applicationId: string; status: string; startedAt?: string; finalRecommendation?: CreditRecommendation; recommendation?: CreditRecommendation }
+interface RunDocument { _id: string; applicationId: string; status: string; startedAt?: string; sampleData?: boolean; legacy?: boolean; finalRecommendation?: CreditRecommendation; recommendation?: CreditRecommendation }
 
 /** One row of the exported decision ledger, already joined to the application and assessment it belongs to. */
 export interface DecisionLedgerRow {
@@ -22,6 +22,7 @@ export interface DecisionLedgerRow {
   status: DecisionRecord["status"];
   overrideReason?: DecisionRecord["overrideReason"];
   policyClause?: string;
+  sampleData: boolean;
   decidedAt: string;
 }
 
@@ -66,6 +67,7 @@ export class ReviewsRepository {
       const run = decision.assessmentRunId ? runById.get(decision.assessmentRunId) : undefined;
       const recommendation = run?.finalRecommendation ?? run?.recommendation;
       const policyClause = decision.overrideReason ? (recommendation?.authorityClause ?? "SME-CP-07 §7.1") : undefined;
+      const sampleData = run?.sampleData === true || run?.legacy === true || application?.sampleData === true;
       return {
         applicationReference: decision.applicationId.toUpperCase(),
         applicantName: application?.businessName ?? decision.applicationId,
@@ -74,6 +76,7 @@ export class ReviewsRepository {
         status: decision.status,
         ...(decision.overrideReason ? { overrideReason: decision.overrideReason } : {}),
         ...(policyClause ? { policyClause } : {}),
+        sampleData,
         decidedAt: toIsoTimestamp(decision.recordedAt),
       };
     });
@@ -101,7 +104,7 @@ export class ReviewsRepository {
     const pending = decisions.at(-1)?.status === "awaiting_second_analyst";
     if (decisions.some((decision) => decision.status === "final") && !pending) return null;
     const { _id, receivedAt, sampleData: _sampleData, ...application } = row;
-    return { application: { id: _id, receivedAt: receivedAt.toISOString(), ...application }, assessmentRunId: run._id, recommendation, authority: recommendation.decisionAuthority, authorityClause: "SME-CP-07 §7.1", decisions, queueStatus: pending ? "awaiting_second_analyst" : "awaiting_decision" };
+    return { application: { id: _id, receivedAt: receivedAt.toISOString(), ...application }, assessmentRunId: run._id, recommendation, authority: recommendation.decisionAuthority, authorityClause: "SME-CP-07 §7.1", decisions, queueStatus: pending ? "awaiting_second_analyst" : "awaiting_decision", sampleData: run.sampleData === true || run.legacy === true || row.sampleData === true };
   }
 }
 

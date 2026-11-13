@@ -10,6 +10,7 @@ import {
   migrate,
 } from "../src/db/migrations.ts";
 import { up as loadSampleAssessmentTrails } from "../migrations/0014-load-sample-assessment-trails.ts";
+import { up as reconcileSampleAssessmentTrails } from "../migrations/0015-reconcile-sample-assessment-trails.ts";
 import {
   validateRecommendationAgainstFindings,
   validateRecommendationCitations,
@@ -194,7 +195,7 @@ describe("sample assessment trails", () => {
 
     for (const application of applications) {
       const runs = await mongo.db.collection<RunDoc>("applicationCheckRuns")
-        .find({ applicationId: application._id, sampleData: true, legacy: { $ne: true } })
+        .find({ applicationId: application._id, sampleData: true, legacy: { $ne: true }, specialistFindings: { $exists: true } })
         .toArray();
       expect(runs, `sample trails for ${application._id}`).toHaveLength(1);
       const run = runs[0]!;
@@ -237,6 +238,66 @@ describe("sample assessment trails", () => {
     await loadSampleAssessmentTrails(mongo.db);
     const after = await mongo.db.collection("applicationCheckRuns").countDocuments({ sampleData: true });
     expect(after).toBe(before);
+  });
+
+  it("keeps every trail's figures and invoice facts aligned to the source pack stored for that application", async () => {
+    await migrate(mongo.db);
+    const applications = await mongo.db.collection<ApplicationDoc>("applications")
+      .find({ sampleData: true, stage: { $ne: "new" } })
+      .toArray();
+    const sources = mongo.db.collection("simulatedAssessmentSources");
+
+    for (const application of applications) {
+      const run = await mongo.db.collection<RunDoc>("applicationCheckRuns")
+        .findOne({ _id: `sample-trail-${application._id}` });
+      expect(run, `sample trail for ${application._id}`).toBeTruthy();
+      const pack = await sources.findOne({ applicationId: application._id, scenarioId: run!.scenarioId });
+      expect(pack, `source pack for ${application._id}`).toBeTruthy();
+      const serialized = JSON.stringify(run);
+      const cashFlow = pack!.sources["Open banking cash flow"] as {
+        averageMonthlyInflowSar: number; dscr: number; returnedCheques: number; annualRevenueSar?: number;
+      };
+      const invoice = pack!.sources["ZATCA e-invoice verification"] as { invoiceNumber?: string | null; amountSar?: number | null };
+
+      expect(serialized, `${application._id} inflow`).toContain(cashFlow.averageMonthlyInflowSar.toLocaleString("en-US"));
+      expect(serialized, `${application._id} DSCR`).toContain(`${cashFlow.dscr}×`);
+      if (cashFlow.returnedCheques > 3) {
+        expect(serialized, `${application._id} returned cheques`).toContain(`${cashFlow.returnedCheques} returned cheques`);
+      }
+      if (cashFlow.annualRevenueSar === undefined) {
+        expect(serialized, `${application._id} must not invent revenue`).not.toMatch(/annual revenue SAR [0-9]/i);
+      } else {
+        expect(serialized, `${application._id} revenue`).toContain(cashFlow.annualRevenueSar.toLocaleString("en-US"));
+      }
+
+      if (application.product === "working_capital" || !invoice.invoiceNumber) {
+        expect(serialized, `${application._id} must not assert a cleared invoice`).not.toContain("INV-");
+      } else {
+        expect(serialized, `${application._id} invoice number`).toContain(invoice.invoiceNumber);
+        expect(serialized, `${application._id} invoice amount`).toContain(invoice.amountSar!.toLocaleString("en-US"));
+      }
+    }
+  });
+
+  it("adds app-1029's sample trail as its own round and leaves the historical throughput run untouched", async () => {
+    await migrate(mongo.db);
+    const runs = mongo.db.collection<RunDoc>("applicationCheckRuns");
+    const historical = await runs.findOne({ _id: "sample-assessment-app-1029-throughput" });
+    expect(historical).toMatchObject({
+      applicationId: "app-1029",
+      status: "completed",
+      startedAt: "2026-11-10T11:00:00.000Z",
+      sampleData: true,
+      finalRecommendation: { outcome: "Approve", decisionAuthority: "Senior credit officer", reasons: [] },
+    });
+    expect(historical).not.toHaveProperty("specialistFindings");
+    expect(await runs.findOne({ _id: "sample-trail-app-1029" })).toMatchObject({ sampleData: true, status: "completed" });
+
+    const before = await runs.find({}).sort({ _id: 1 }).toArray();
+    await reconcileSampleAssessmentTrails(mongo.db);
+    const after = await runs.find({}).sort({ _id: 1 }).toArray();
+    expect(after).toEqual(before);
+    expect((await runs.findOne({ _id: "sample-assessment-app-1029-throughput" }))).toEqual(historical);
   });
 
   it("does not add a sample trail to an application a person actually assessed", async () => {

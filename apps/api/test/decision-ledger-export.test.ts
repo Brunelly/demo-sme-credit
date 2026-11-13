@@ -165,15 +165,34 @@ describe("decision ledger CSV export", () => {
     expect(response.headers.pragma).toBe("no-cache");
     const rows = parseCsv(response.text);
     expect(rows).toHaveLength(4);
-    expect(rows[0]).toEqual(["Application reference", "Applicant", "Decided by", "Outcome", "Status", "Override reason", "Policy clause", "Decided at"]);
-    expect(rows[1]).toEqual(["APP-2", 'Al Nakhil Packaging, "Riyadh"', "Faisal Alqahtani", "Approve", "Final", "Relationship history with the Bank", "SME-CP-07 §7.1", "2026-11-11T14:32:00.000Z"]);
-    expect(rows[2]).toEqual(["APP-3", "Sahil Logistics", "Maha Alotaibi", "Pending second analyst", "Awaiting second analyst", "", "", "2026-11-11T09:15:00.000Z"]);
-    expect(rows[3]).toEqual(["APP-1", "Rawafid Industrial Supplies", "Maha Alotaibi", "Decline", "Final", "", "", "2026-11-10T09:05:00.000Z"]);
+    expect(rows[0]).toEqual(["Application reference", "Applicant", "Decided by", "Outcome", "Status", "Data source", "Override reason", "Policy clause", "Decided at"]);
+    expect(rows[1]).toEqual(["APP-2", 'Al Nakhil Packaging, "Riyadh"', "Faisal Alqahtani", "Approve", "Final", "Sample data", "Relationship history with the Bank", "SME-CP-07 §7.1", "2026-11-11T14:32:00.000Z"]);
+    expect(rows[2]).toEqual(["APP-3", "Sahil Logistics", "Maha Alotaibi", "Pending second analyst", "Awaiting second analyst", "Sample data", "", "", "2026-11-11T09:15:00.000Z"]);
+    expect(rows[3]).toEqual(["APP-1", "Rawafid Industrial Supplies", "Maha Alotaibi", "Decline", "Final", "Sample data", "", "", "2026-11-10T09:05:00.000Z"]);
+  });
+
+  it("marks a live decision as live data in the same column", async () => {
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertOne({
+      _id: "app-live", businessName: "Live Trading", businessNameArabic: "تجارة", commercialRegistration: "1010000009",
+      product: "working_capital", amountSar: 500000, stage: "decision_required", receivedAt: new Date("2026-11-12T08:00:00Z"), city: "Riyadh", sampleData: false,
+    });
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applicationCheckRuns").insertOne({
+      _id: "run-live", applicationId: "app-live", status: "completed", startedAt: "2026-11-12T09:00:00.000Z",
+      finalRecommendation: { outcome: "Approve", decisionAuthority: "Credit analyst confirms", authorityClause: "SME-CP-07 §7.1" },
+    });
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("creditDecisions").insertOne({
+      _id: "decision-live", applicationId: "app-live", assessmentRunId: "run-live", analystId: "platform-user-17",
+      analystName: "Maha Alotaibi", decision: "approve", effectiveOutcome: "Approve", notes: "All checks clear.",
+      recordedAt: "2026-11-12T10:00:00.000Z", status: "final", sequence: 1, ledgerSlot: 1,
+    });
+    const response = await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").set("authorization", bearer("maha-alotaibi", "platform-user-17")).expect(200);
+    const rows = parseCsv(response.text);
+    expect(rows[1]).toContain("Live data");
   });
 
   it("returns only the header when the ledger is empty", async () => {
     const response = await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").set("authorization", bearer("maha-alotaibi", "platform-user-17")).expect(200);
-    expect(parseCsv(response.text)).toEqual([["Application reference", "Applicant", "Decided by", "Outcome", "Status", "Override reason", "Policy clause", "Decided at"]]);
+    expect(parseCsv(response.text)).toEqual([["Application reference", "Applicant", "Decided by", "Outcome", "Status", "Data source", "Override reason", "Policy clause", "Decided at"]]);
   });
 
   it("answers 401 with no file when there is no signed-in principal", async () => {
@@ -193,7 +212,7 @@ describe("decision ledger CSV export", () => {
   it("lets analysts, senior credit officers and the credit committee export", async () => {
     for (const role of ["credit_analyst", "senior_credit_officer", "credit_committee"] as const) {
       const response = await request(testApp(mongo.db)).get("/api/reviews/decisions.csv").set("authorization", bearer("noura-alharbi", `platform-user-${role}`, role)).expect(200);
-      expect(parseCsv(response.text)[0]).toEqual(["Application reference", "Applicant", "Decided by", "Outcome", "Status", "Override reason", "Policy clause", "Decided at"]);
+      expect(parseCsv(response.text)[0]).toEqual(["Application reference", "Applicant", "Decided by", "Outcome", "Status", "Data source", "Override reason", "Policy clause", "Decided at"]);
     }
   });
 

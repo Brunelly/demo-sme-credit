@@ -52,6 +52,8 @@ const translations = {
   "Export failed": "تعذر التصدير",
   "The decision ledger could not be downloaded. Try again.": "تعذر تنزيل سجل القرارات. أعد المحاولة.",
   "Your role does not have permission to export the decision ledger.": "لا يسمح دورك بتصدير سجل القرارات.",
+  "Sample assessment — decision not available": "تقييم تجريبي — القرار غير متاح",
+  "This recommendation comes from sample data and cannot be recorded as a final credit decision. Run a live assessment for this application before deciding it.": "هذه التوصية مبنية على بيانات تجريبية ولا يمكن تسجيلها كقرار ائتماني نهائي. شغّل تقييماً فعلياً لهذا الطلب قبل اتخاذ القرار.",
   "Use dark theme": "استخدام النسق الداكن",
   "Use light theme": "استخدام النسق الفاتح",
 } as const;
