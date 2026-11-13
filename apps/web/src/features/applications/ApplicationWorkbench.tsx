@@ -1,5 +1,5 @@
 import type { ApplicationCheckRun, CreditApplication, MissingGradeInput, RecommendationReason, SpecialistFinding } from "@app/contracts";
-import { Alert, Badge, Button, CellStack, DataTable, EmptyState, ErrorState, Skeleton, type Column } from "@app/ui";
+import { Alert, Badge, Button, CellStack, DataTable, EmptyState, ErrorState, LoadingState, Skeleton, type Column } from "@app/ui";
 import { Check, ChevronRight, Circle, FileCheck2, LoaderCircle, MessageSquareWarning, Play, RefreshCw, Scale, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useResource } from "../../lib/use-resource.ts";
@@ -69,6 +69,7 @@ export function ApplicationWorkbench() {
   useEffect(() => {
     if (apps.length && !apps.some((a) => a.id === selectedId)) setSelectedId(apps[0]!.id);
   }, [apps, selectedId]);
+  const selected = apps.find((a) => a.id === selectedId);
   return (
     <section className={styles.workbench} aria-labelledby="queue-heading">
       <div className={styles.queuePane}>
@@ -82,7 +83,7 @@ export function ApplicationWorkbench() {
         <DataTable columns={columns} rows={apps} rowKey={(a) => a.id} caption={t("SME financing applications")} onRowClick={(a) => setSelectedId(a.id)} isRowSelected={(a) => a.id === selectedId} loading={resource.loading} error={resource.error} onRetry={resource.reload} empty={<EmptyState title={t("No applications")} description={t("New applications will appear here.")} compact />} />
       </div>
       <aside className={styles.casePane} aria-label={t("Selected application workspace")}>
-        {apps.find((a) => a.id === selectedId) ? <CaseWorkspace application={apps.find((a) => a.id === selectedId)!} /> : <p>{t("Select an application.")}</p>}
+        {selected ? <CaseWorkspace key={selected.id} application={selected} /> : <p>{t("Select an application.")}</p>}
       </aside>
     </section>
   );
@@ -165,12 +166,17 @@ function CaseWorkspace({ application }: { application: CreditApplication }) {
           {error}
         </Alert>
       )}
-      {runs.loading ? (
+      {runs.data && runs.error ? (
+        <Alert tone="warning" title={t("Assessment refresh failed")}>
+          {t("Showing the last loaded assessment trail.")}
+        </Alert>
+      ) : null}
+      {!runs.data && runs.loading ? (
         <div aria-label={t("Loading assessment history")}>
           <Skeleton height={32} />
           <Skeleton height={120} />
         </div>
-      ) : runs.error ? (
+      ) : !runs.data && runs.error ? (
         <ErrorState title={t("Assessment history unavailable")} message={runs.error} onRetry={runs.reload} compact />
       ) : runs.data?.items.length ? (
         <div className={styles.runs}>
@@ -185,7 +191,7 @@ function CaseWorkspace({ application }: { application: CreditApplication }) {
   );
 }
 function AssessmentRun({ run, latest }: { run: ApplicationCheckRun; latest: boolean }) {
-  const { locale } = usePreferences();
+  const { locale, t } = usePreferences();
   const dateTime = new Intl.DateTimeFormat(locale === "ar" ? "ar-SA" : "en-SA", { dateStyle: "medium", timeStyle: "short" });
   const corrected = (finding: SpecialistFinding) => run.revisedFindings.find((r) => r.specialistType === finding.specialistType);
   return (
@@ -219,33 +225,37 @@ function AssessmentRun({ run, latest }: { run: ApplicationCheckRun; latest: bool
         </Alert>
       ) : null}
       {run.finalRecommendation && <Recommendation run={run} />}
-      <ol className={styles.timeline}>
-        {run.specialistFindings.map((finding) => {
-          const review = run.reviewerChallenges.find((r) => r.findingId === finding.id);
-          const revision = corrected(finding);
-          return (
-            <li key={finding.id} className={styles.sourceBlock}>
-              <Finding finding={finding} label="First pass" />
-              {review && (
-                <div className={styles.reviewLine}>
-                  <MessageSquareWarning size={16} />
-                  <div>
-                    <strong>Independent reviewer · {review.status === "accepted" ? "Accepted first pass" : review.status === "human_review" ? "Human review required" : "Challenge recorded"}</strong>
-                    <p>{review.conclusion}</p>
-                    {review.evidenceGap && (
-                      <p>
-                        <b>Targeted gap:</b> {review.evidenceGap} {review.policyCitation}
-                      </p>
-                    )}
-                    <time dateTime={review.createdAt}>{dateTime.format(new Date(review.createdAt))}</time>
+      {run.status === "running" && run.specialistFindings.length === 0 ? (
+        <LoadingState label={t("Specialist findings are being prepared")} compact />
+      ) : (
+        <ol className={styles.timeline}>
+          {run.specialistFindings.map((finding) => {
+            const review = run.reviewerChallenges.find((r) => r.findingId === finding.id);
+            const revision = corrected(finding);
+            return (
+              <li key={finding.id} className={styles.sourceBlock}>
+                <Finding finding={finding} label="First pass" />
+                {review && (
+                  <div className={styles.reviewLine}>
+                    <MessageSquareWarning size={16} />
+                    <div>
+                      <strong>Independent reviewer · {review.status === "accepted" ? "Accepted first pass" : review.status === "human_review" ? "Human review required" : "Challenge recorded"}</strong>
+                      <p>{review.conclusion}</p>
+                      {review.evidenceGap && (
+                        <p>
+                          <b>Targeted gap:</b> {review.evidenceGap} {review.policyCitation}
+                        </p>
+                      )}
+                      <time dateTime={review.createdAt}>{dateTime.format(new Date(review.createdAt))}</time>
+                    </div>
                   </div>
-                </div>
-              )}
-              {revision && <Finding finding={revision} label="Reworked finding" />}
-            </li>
-          );
-        })}
-      </ol>
+                )}
+                {revision && <Finding finding={revision} label="Reworked finding" />}
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </article>
   );
 }
