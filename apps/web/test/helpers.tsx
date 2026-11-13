@@ -4,7 +4,7 @@ import { vi } from "vitest";
 import { routes } from "../src/routes.tsx";
 import { PreferencesProvider } from "../src/lib/preferences.tsx";
 
-type Handler = (body: unknown, url: URL) => unknown;
+type Handler = (body: unknown, url: URL) => unknown | Promise<unknown>;
 
 /**
  * Stubs fetch with fake API answers, keyed "METHOD /path" (no query string). A handler returns the JSON body;
@@ -22,7 +22,7 @@ export function mockApi(handlers: Record<string, Handler>) {
     calls.push({ method, path: url.pathname, search: url.search, body });
     const handler = handlers[`${method} ${url.pathname}`];
     if (!handler) throw new Error(`No mock for ${method} ${url.pathname}`);
-    const result = handler(body, url);
+    const result = await handler(body, url);
     if (result instanceof TextResult) return new Response(result.body, { status: 200, headers: result.headers });
     const { code, payload } = result instanceof StatusResult ? result : { code: 200, payload: result };
     return new Response(code === 204 ? null : JSON.stringify(payload), { status: code, headers: { "Content-Type": "application/json" } });
