@@ -120,6 +120,30 @@ function CaseWorkspace({ application }: { application: CreditApplication }) {
       setRunning(false);
     }
   }
+  if (runs.errorStatus === 401 || runs.errorStatus === 403) {
+    return (
+      <div className={styles.caseContent}>
+        <ErrorState
+          title={t("Session ended")}
+          message={t("Your session can no longer open this case. Sign in again, then try again.")}
+          onRetry={runs.reload}
+          retryLabel={t("Try again")}
+        />
+      </div>
+    );
+  }
+  if (runs.errorStatus === 404) {
+    return (
+      <div className={styles.caseContent}>
+        <ErrorState
+          title={t("Case not found")}
+          message={t("This case is no longer available. It may have been withdrawn or deleted.")}
+          onRetry={runs.reload}
+          retryLabel={t("Try again")}
+        />
+      </div>
+    );
+  }
   return (
     <div className={styles.caseContent}>
       <header className={styles.caseHeader}>
@@ -167,8 +191,16 @@ function CaseWorkspace({ application }: { application: CreditApplication }) {
         </Alert>
       )}
       {runs.data && runs.error ? (
-        <Alert tone="warning" title={t("Assessment refresh failed")}>
-          {t("Showing the last loaded assessment trail.")}
+        <Alert
+          tone="warning"
+          title={t("Assessment refresh failed")}
+          action={
+            <Button size="sm" icon={<RefreshCw size={14} />} onClick={runs.reload}>
+              {t("Try again")}
+            </Button>
+          }
+        >
+          {t("Showing the last loaded assessment trail. Try again to check for changes.")}
         </Alert>
       ) : null}
       {!runs.data && runs.loading ? (
