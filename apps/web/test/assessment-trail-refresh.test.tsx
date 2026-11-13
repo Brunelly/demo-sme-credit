@@ -104,6 +104,30 @@ const runningRun = {
   steps,
 };
 
+const completedRun = {
+  ...runningRun,
+  status: "completed" as const,
+  completedAt: at,
+  steps: steps.map((step) => ({ ...step, status: "completed" as const, completedAt: at })),
+  finalRecommendation: {
+    outcome: "Refer" as const,
+    riskGrade: "C" as const,
+    indicativeProfitRate: "SAIBOR + 4.0%",
+    decisionAuthority: "Credit analyst reviews the flagged checks" as const,
+    authorityClause: "SME-CP-07 §7.1" as const,
+    notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1." as const,
+    createdAt: at,
+    reasons: [
+      {
+        clause: "SME-CP-07 §3.1",
+        conclusion: "Moderate bureau risk requires analyst review.",
+        evidence: "SIMAH records commercial score 612 in the Moderate band.",
+        findingIds: ["f-simah"],
+      },
+    ],
+  },
+};
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((settle) => {
@@ -146,6 +170,31 @@ describe("assessment trail refresh", () => {
     expect(await screen.findByText(wathqFinding.plainLanguageFinding)).toBeVisible();
     expect(screen.getByText(simahFinding.plainLanguageFinding)).toBe(firstFinding);
     expect(screen.getByRole("list", { name: "Maitento assessment progress" })).toBeInTheDocument();
+  });
+
+  it("shows the full trail and recommendation once the running assessment completes", async () => {
+    let requests = 0;
+    mockApi({
+      "GET /api/applications": () => applications,
+      "GET /api/applications/app-1/assessment-runs": () => {
+        requests += 1;
+        return requests === 1
+          ? { items: [runningRun], simulatedData: true }
+          : { items: [completedRun], simulatedData: true };
+      },
+    });
+
+    renderAt("/");
+    const firstFinding = await screen.findByText(simahFinding.plainLanguageFinding);
+
+    expect(await screen.findByRole("heading", { name: "AI recommendation" }, { timeout: 2500 })).toBeVisible();
+    expect(screen.getAllByText("Refer", { exact: true }).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Grade C · SAIBOR \+ 4\.0%/)).toBeVisible();
+    expect(screen.getByText("Reason and evidence tree")).toBeVisible();
+    expect(screen.getByText(simahFinding.plainLanguageFinding)).toBe(firstFinding);
+    expect(screen.getByRole("list", { name: "Maitento assessment progress" })).toHaveTextContent(
+      "SIMAH credit bureauCompleted",
+    );
   });
 
   it("shows a loading state in the trail when the first fetch returns a run with no findings yet", async () => {
