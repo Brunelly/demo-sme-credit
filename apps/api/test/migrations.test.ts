@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   MIGRATIONS_COLLECTION,
@@ -18,7 +19,7 @@ import {
   validateRecommendationCitations,
 } from "../src/features/applications/applications.service.ts";
 import type { ApplicationProduct, ApplicationCheckRun, CreditApplication } from "@app/contracts";
-import { useTestDatabase } from "./helpers.ts";
+import { testApp, useTestDatabase } from "./helpers.ts";
 
 const mongo = useTestDatabase();
 
@@ -314,6 +315,14 @@ describe("sample assessment trails", () => {
     });
     expect((await checks.find("app-1029", "sample-assessment-app-1029-throughput"))?.id).toBe("sample-assessment-app-1029-throughput");
     expect((await checks.findById("sample-assessment-app-1029-throughput"))?.id).toBe("sample-assessment-app-1029-throughput");
+    const trail = await request(testApp(mongo.db)).get("/api/applications/app-1029/assessment-runs").expect(200);
+    expect(trail.body.items.map((run: { id: string }) => run.id)).toEqual(expect.arrayContaining(["sample-assessment-app-1029-throughput", "sample-trail-app-1029"]));
+    expect(trail.body.items.find((run: { id: string }) => run.id === "sample-assessment-app-1029-throughput")).toMatchObject({
+      startedAt: "2026-11-10T11:00:00.000Z",
+      completedAt: "2026-11-10T11:00:00.000Z",
+      specialistFindings: [],
+      finalRecommendation: { outcome: "Approve" },
+    });
 
     const before = await runs.find({ applicationId: "app-1029" }).sort({ _id: 1 }).toArray();
     await repairThroughputRun(mongo.db);
