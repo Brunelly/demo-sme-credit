@@ -28,14 +28,16 @@ export async function up(db: Db): Promise<void> {
   if (!run) return;
 
   const final = (run.finalRecommendation ?? {}) as HistoricalRecommendation;
+  // Never invent a recommendation: the historical record already carries the outcome and authority it was made under.
+  if (!final.outcome || !final.decisionAuthority) return;
   const startedAt = typeof run.startedAt === "string" && !Number.isNaN(new Date(run.startedAt).getTime())
     ? run.startedAt
     : HISTORICAL_STARTED_AT;
   const recommendation = {
-    outcome: final.outcome ?? "Approve",
+    outcome: final.outcome,
     riskGrade: final.riskGrade ?? null,
     indicativeProfitRate: final.indicativeProfitRate ?? null,
-    decisionAuthority: final.decisionAuthority ?? "Senior credit officer",
+    decisionAuthority: final.decisionAuthority,
     authorityClause: final.authorityClause ?? "SME-CP-07 §7.1",
     reasons: final.reasons ?? [],
     reviewerChallenges: [],
