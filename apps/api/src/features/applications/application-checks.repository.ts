@@ -71,8 +71,8 @@ export class ApplicationChecksRepository {
     return row ? this.toContract(row) : null;
   }
   async findById(runId: string): Promise<ApplicationCheckRun | null> {
-    const row = await this.db.collection<RunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).findOne({ _id: runId });
-    if (!row) return null; const { _id, ...rest } = row; return { id: _id, ...rest };
+    const row = await this.db.collection<RunDocument | LegacyRunDocument>(APPLICATION_CHECK_RUNS_COLLECTION).findOne({ _id: runId });
+    return row ? this.toContract(row) : null;
   }
   async latest(applicationId: string): Promise<ApplicationCheckRun | null> { return (await this.list(applicationId))[0] ?? null; }
   private toContract(row: RunDocument | LegacyRunDocument): ApplicationCheckRun {
