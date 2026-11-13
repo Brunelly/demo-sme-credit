@@ -5,7 +5,7 @@ import { ConflictError } from "../../errors.ts";
 
 export const DECISIONS_COLLECTION = "creditDecisions";
 export const decisionIndexes: IndexDescription[] = [
-  { key: { applicationId: 1, assessmentRunId: 1, recordedAt: 1, _id: 1 }, name: "decisions_application_history" },
+  { key: { applicationId: 1, recordedAt: 1, _id: 1 }, name: "decisions_application_history" },
   { key: { status: 1, recordedAt: -1, _id: -1 }, name: "decisions_weekly_throughput" },
   { key: { applicationId: 1, assessmentRunId: 1, ledgerSlot: 1 }, name: "decisions_one_per_sequence", unique: true, partialFilterExpression: { ledgerSlot: { $exists: true } } },
 ];
@@ -41,8 +41,9 @@ export class ReviewsRepository {
     return application ? this.toQueueItem(application) : null;
   }
 
-  async listDecisions(applicationId: string, assessmentRunId: string): Promise<DecisionRecord[]> {
-    const rows = await this.db.collection<DecisionDocument>(DECISIONS_COLLECTION).find({ applicationId, assessmentRunId }).sort({ recordedAt: 1, _id: 1 }).limit(20).toArray();
+  /** The application's whole decision history, independent of which assessment it was recorded against. */
+  async listDecisions(applicationId: string): Promise<DecisionRecord[]> {
+    const rows = await this.db.collection<DecisionDocument>(DECISIONS_COLLECTION).find({ applicationId }).sort({ recordedAt: 1, _id: 1 }).limit(20).toArray();
     return rows.map(({ _id, ledgerSlot: _ledgerSlot, ...row }) => ({ id: _id, ...row }));
   }
 
@@ -95,16 +96,29 @@ export class ReviewsRepository {
   }
 
   private async toQueueItem(row: ApplicationDocument): Promise<ReviewQueueItem | null> {
-    const run = await this.db.collection<RunDocument>("applicationCheckRuns").find({ applicationId: row._id, $or: [{ status: "completed" }, { recommendation: { $exists: true } }] }).sort({ startedAt: -1, performedAt: -1, _id: -1 } as never).limit(1).next();
+    const decisions = await this.listDecisions(row._id);
+    if (decisions.some((decision) => decision.status === "final")) return null;
+    const pending = decisions.at(-1)?.status === "awaiting_second_analyst";
+    // A recorded decision belongs to the assessment it was recorded against. A further assessment may add a
+    // newer trail, but it must not move a pending four-eyes decline to an undecided case.
+    const decisionRunId = pending ? decisions.at(-1)?.assessmentRunId : undefined;
+    const run = decisionRunId
+      ? await this.findCompletedRun(row._id, decisionRunId)
+      : await this.findLatestCompletedRun(row._id);
     const storedRecommendation = run?.finalRecommendation ?? run?.recommendation;
     if (!run || !storedRecommendation) return null;
     const latestOverride = storedRecommendation.overrides?.at(-1) ?? storedRecommendation.override;
     const recommendation = latestOverride ? { ...storedRecommendation, outcome: latestOverride.outcome } : storedRecommendation;
-    const decisions = await this.listDecisions(row._id, run._id);
-    const pending = decisions.at(-1)?.status === "awaiting_second_analyst";
-    if (decisions.some((decision) => decision.status === "final") && !pending) return null;
     const { _id, receivedAt, sampleData: _sampleData, ...application } = row;
     return { application: { id: _id, receivedAt: receivedAt.toISOString(), ...application }, assessmentRunId: run._id, recommendation, authority: recommendation.decisionAuthority, authorityClause: "SME-CP-07 §7.1", decisions, queueStatus: pending ? "awaiting_second_analyst" : "awaiting_decision", sampleData: run.sampleData === true || run.legacy === true || row.sampleData === true };
+  }
+
+  private async findLatestCompletedRun(applicationId: string): Promise<RunDocument | null> {
+    return this.db.collection<RunDocument>("applicationCheckRuns").find({ applicationId, $or: [{ status: "completed" }, { recommendation: { $exists: true } }] }).sort({ startedAt: -1, performedAt: -1, _id: -1 } as never).limit(1).next();
+  }
+
+  private async findCompletedRun(applicationId: string, runId: string): Promise<RunDocument | null> {
+    return this.db.collection<RunDocument>("applicationCheckRuns").findOne({ _id: runId, applicationId, $or: [{ status: "completed" }, { recommendation: { $exists: true } }] });
   }
 }
 
