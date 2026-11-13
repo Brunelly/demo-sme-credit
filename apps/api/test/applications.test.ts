@@ -280,6 +280,38 @@ describe("traceable Maitento assessments", () => {
     const two = await request(app).get(`/api/applications/case-1/assessment-runs/${second.body.id}`);
     expect(one.body.specialistFindings[0].plainLanguageFinding).not.toBe(two.body.specialistFindings[0].plainLanguageFinding);
   });
+  it("keeps a pending four-eyes decline and its deciding assessment when another assessment runs", async () => {
+    await seedSourcePack();
+    await mongo.db.collection("applications").updateOne({ _id: "case-1" } as never, { $set: { stage: "decision_required" } } as never);
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applicationCheckRuns").insertOne({
+      _id: "run-decided",
+      applicationId: "case-1",
+      scenarioId: "clean",
+      status: "completed",
+      startedAt: "2026-11-10T09:00:00Z",
+      completedAt: "2026-11-10T09:05:00Z",
+      specialistFindings: [],
+      reviewerChallenges: [],
+      revisedFindings: [],
+      failureReason: null,
+      createdBy: "Credit analyst",
+      steps: [],
+      finalRecommendation: { outcome: "Decline", riskGrade: "C", indicativeProfitRate: null, decisionAuthority: "Credit analyst, then a second analyst (four eyes)", authorityClause: "SME-CP-07 §7.1", reasons: [], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1.", createdAt: "2026-11-10T09:00:00Z" },
+    });
+    await mongo.db.collection<{ _id: string; [key: string]: unknown }>("creditDecisions").insertOne({ _id: "decision-1", applicationId: "case-1", assessmentRunId: "run-decided", analystId: "platform-user-17", analystName: "Maha Alotaibi", decision: "decline", effectiveOutcome: "Decline", notes: "Bureau evidence does not meet policy.", recordedAt: "2026-11-10T10:00:00Z", status: "awaiting_second_analyst", sequence: 1, ledgerSlot: 1 });
+
+    const app = testApp(mongo.db, { ai: scriptedAi() });
+    const started = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
+    await vi.waitFor(async () => expect((await request(app).get(`/api/applications/case-1/assessment-runs/${started.body.id}`)).body.status).toBe("completed"));
+
+    const queue = await request(app).get("/api/reviews").expect(200);
+    expect(queue.body.items).toHaveLength(1);
+    expect(queue.body.items[0]).toMatchObject({ assessmentRunId: "run-decided", queueStatus: "awaiting_second_analyst" });
+    expect(queue.body.items[0].decisions).toEqual([expect.objectContaining({ id: "decision-1", status: "awaiting_second_analyst" })]);
+    const trail = await request(app).get("/api/applications/case-1/assessment-runs").expect(200);
+    expect(trail.body.items.map((run: { id: string }) => run.id)).toEqual(expect.arrayContaining(["run-decided", started.body.id]));
+    expect(await mongo.db.collection("creditDecisions").countDocuments({ applicationId: "case-1" })).toBe(1);
+  });
   it("shows a safe stage-specific failure and permits a successful rerun", async () => {
     await seedSourcePack();
     const delegate = scriptedAi();

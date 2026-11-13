@@ -7,7 +7,26 @@ const bearer = (profileId: "maha-alotaibi" | "faisal-alqahtani" | "noura-alharbi
 const mongo = useTestDatabase();
 async function seed() {
   await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applications").insertOne({ _id: "app-1", businessName: "Sample Trading", businessNameArabic: "شركة تجريبية", commercialRegistration: "1010000001", product: "working_capital", amountSar: 1800000, stage: "decision_required", receivedAt: new Date("2026-11-10T08:00:00Z"), city: "Riyadh", riskGrade: "B", sampleData: false });
-  await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applicationCheckRuns").insertOne({ _id: "run-1", applicationId: "app-1", status: "completed", startedAt: "2026-11-10T09:00:00Z", finalRecommendation: { outcome: "Decline", riskGrade: "B", indicativeProfitRate: null, decisionAuthority: "Credit analyst, then a second analyst (four eyes)", authorityClause: "SME-CP-07 §7.1", reasons: [], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1.", createdAt: "2026-11-10T09:00:00Z" } });
+  await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applicationCheckRuns").insertOne({ _id: "run-1", applicationId: "app-1", scenarioId: "clean", status: "completed", startedAt: "2026-11-10T09:00:00Z", completedAt: "2026-11-10T09:05:00Z", specialistFindings: [], reviewerChallenges: [], revisedFindings: [], failureReason: null, createdBy: "Credit analyst", steps: [], finalRecommendation: { outcome: "Decline", riskGrade: "B", indicativeProfitRate: null, decisionAuthority: "Credit analyst, then a second analyst (four eyes)", authorityClause: "SME-CP-07 §7.1", reasons: [], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1.", createdAt: "2026-11-10T09:00:00Z" } });
+}
+
+/** A completed assessment recorded after the decision, as a further analyst run would leave it. */
+async function addFurtherAssessment() {
+  await mongo.db.collection<{ _id: string; [key: string]: unknown }>("applicationCheckRuns").insertOne({
+    _id: "run-2",
+    applicationId: "app-1",
+    scenarioId: "clean",
+    status: "completed",
+    startedAt: "2026-11-12T09:00:00Z",
+    completedAt: "2026-11-12T09:05:00Z",
+    specialistFindings: [],
+    reviewerChallenges: [],
+    revisedFindings: [],
+    finalRecommendation: { outcome: "Approve", riskGrade: "A", indicativeProfitRate: null, decisionAuthority: "Credit analyst confirms", authorityClause: "SME-CP-07 §7.1", reasons: [], notice: "AI recommendation — a human must make the decision under SME-CP-07 §7.1.", createdAt: "2026-11-12T09:00:00Z" },
+    failureReason: null,
+    createdBy: "Credit analyst",
+    steps: [],
+  });
 }
 
 describe("review queue", () => {
@@ -68,6 +87,53 @@ describe("review queue", () => {
     const second = await request(app).post("/api/reviews/app-1/decisions").set("authorization", bearer("faisal-alqahtani", "platform-user-29")).send({ assessmentRunId: "run-1", analystIdentityId: "faisal-alqahtani", expectedSequence: 2, decision: "decline", notes: "Independent review confirms the decline." }).expect(201);
     expect(second.body).toMatchObject({ status: "final", sequence: 2, analystId: "platform-user-29", analystName: "Faisal Alqahtani" });
     expect(await mongo.db.collection("creditDecisions").countDocuments({ applicationId: "app-1" })).toBe(2);
+  });
+
+  it("keeps a pending decline and its deciding assessment when a further assessment completes", async () => {
+    await seed(); const app = testApp(mongo.db);
+    await request(app).post("/api/reviews/app-1/decisions").set("authorization", bearer("maha-alotaibi", "platform-user-17")).send({ assessmentRunId: "run-1", analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "decline", notes: "Bureau evidence does not meet policy." }).expect(201);
+
+    await addFurtherAssessment();
+
+    const queue = await request(app).get("/api/reviews").expect(200);
+    expect(queue.body.items).toHaveLength(1);
+    expect(queue.body.items[0]).toMatchObject({ assessmentRunId: "run-1", queueStatus: "awaiting_second_analyst" });
+    expect(queue.body.items[0].decisions).toHaveLength(1);
+    expect(queue.body.items[0].decisions[0]).toMatchObject({ assessmentRunId: "run-1", status: "awaiting_second_analyst", sequence: 1 });
+    expect(queue.body.items[0].recommendation.outcome).toBe("Decline");
+
+    const trail = await request(app).get("/api/applications/app-1/assessment-runs").expect(200);
+    expect(trail.body.items.map((run: { id: string }) => run.id)).toEqual(expect.arrayContaining(["run-1", "run-2"]));
+
+    await request(app).post("/api/reviews/app-1/decisions").set("authorization", bearer("faisal-alqahtani", "platform-user-29")).send({ assessmentRunId: "run-2", analystIdentityId: "faisal-alqahtani", expectedSequence: 2, decision: "decline", notes: "Independent review of the original decline." }).expect(409);
+    const second = await request(app).post("/api/reviews/app-1/decisions").set("authorization", bearer("faisal-alqahtani", "platform-user-29")).send({ assessmentRunId: "run-1", analystIdentityId: "faisal-alqahtani", expectedSequence: 2, decision: "decline", notes: "Independent review confirms the decline." }).expect(201);
+    expect(second.body).toMatchObject({ assessmentRunId: "run-1", status: "final", sequence: 2 });
+    expect(await mongo.db.collection("creditDecisions").countDocuments({ applicationId: "app-1" })).toBe(2);
+    expect(await mongo.db.collection("applicationCheckRuns").countDocuments({ applicationId: "app-1" })).toBe(2);
+    expect((await request(app).get("/api/reviews").expect(200)).body.items).toHaveLength(0);
+  });
+
+  it("keeps a final decision recorded when a further assessment completes", async () => {
+    await seed(); const app = testApp(mongo.db);
+    await mongo.db.collection("applicationCheckRuns").updateOne({ _id: "run-1" } as never, { $set: { "finalRecommendation.outcome": "Approve", "finalRecommendation.decisionAuthority": "Credit analyst confirms" } } as never);
+    await request(app).post("/api/reviews/app-1/decisions").set("authorization", bearer("maha-alotaibi", "platform-user-17")).send({ assessmentRunId: "run-1", analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "approve", notes: "All policy evidence supports approval." }).expect(201);
+
+    await addFurtherAssessment();
+
+    expect((await request(app).get("/api/reviews").expect(200)).body.items).toHaveLength(0);
+    expect(await mongo.db.collection("creditDecisions").countDocuments({ applicationId: "app-1", status: "final" })).toBe(1);
+    const throughput = await request(app).get("/api/dashboard/throughput").expect(200);
+    expect(throughput.body.recentDecisions).toEqual(expect.arrayContaining([expect.objectContaining({ applicationId: "app-1", outcome: "Approve" })]));
+  });
+
+  it("records only one copy of the same decline", async () => {
+    await seed(); const app = testApp(mongo.db);
+    const decline = () => request(app).post("/api/reviews/app-1/decisions").set("authorization", bearer("maha-alotaibi", "platform-user-17")).send({ assessmentRunId: "run-1", analystIdentityId: "maha-alotaibi", expectedSequence: 1, decision: "decline", notes: "Bureau evidence does not meet policy." });
+
+    await decline().expect(201);
+    await decline().expect(409);
+
+    expect(await mongo.db.collection("creditDecisions").countDocuments({ applicationId: "app-1" })).toBe(1);
   });
 
   it("records an override only with an Appendix A reason", async () => {
