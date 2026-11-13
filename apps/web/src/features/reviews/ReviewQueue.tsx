@@ -8,6 +8,27 @@ import styles from "./ReviewQueue.module.css";
 import { usePreferences } from "../../lib/preferences.tsx";
 
 const overrideReasons: OverrideReason[] = ["Additional collateral or guarantee provided", "Information not available to the assessment", "Relationship history with the Bank", "Data quality issue in a source check", "Sector or market conditions"];
+
+/** The analyst named on the recorded first decision, matched by the identity the server stores. */
+function priorAnalyst(item?: ReviewQueueItem) {
+  if (!item || item.queueStatus !== "awaiting_second_analyst") return undefined;
+  const decision = item.decisions.at(-1);
+  if (!decision) return undefined;
+  return analystIdentities.find((identity) => identity.id === decision.analystId)
+    ?? analystIdentities.find((identity) => identity.name === decision.analystName);
+}
+
+/** Named analysts offered for this step, with the first signer excluded and each name listed once. */
+function availableAnalysts(item?: ReviewQueueItem) {
+  const prior = priorAnalyst(item);
+  const seen = new Set<string>();
+  return analystIdentities.filter((identity) => {
+    if (identity.id === prior?.id || seen.has(identity.name)) return false;
+    seen.add(identity.name);
+    return true;
+  });
+}
+
 export function ReviewQueue() {
   const { locale, t } = usePreferences();
   const money = new Intl.NumberFormat(locale === "ar" ? "ar-SA" : "en-SA", { style: "currency", currency: "SAR", maximumFractionDigits: 0 });
@@ -26,10 +47,9 @@ export function ReviewQueue() {
     setNotes("");
     setOverrideReason(overrideReasons[0]);
     setOverrideOutcome("Approve");
-    const priorAnalystId = selected.decisions.at(-1)?.analystId;
-    setAnalystIdentityId(analystIdentities.find((identity) => identity.id !== priorAnalystId)?.id ?? analystIdentities[0].id);
+    setAnalystIdentityId(availableAnalysts(selected)[0]?.id ?? analystIdentities[0].id);
     setFormError(undefined);
-  }, [selected?.application.id, selected?.queueStatus, selected?.recommendation.outcome]);
+  }, [selected?.application.id, selected?.queueStatus, selected?.recommendation.outcome, selected?.decisions.length]);
   async function submit(event: React.FormEvent) { event.preventDefault(); if (!selected) return; setSaving(true); setFormError(undefined); try { await recordDecision(selected.application.id, { assessmentRunId: selected.assessmentRunId, analystIdentityId, expectedSequence: selected.queueStatus === "awaiting_second_analyst" ? 2 : 1, decision, notes, ...(decision === "override" ? { overrideReason, overrideOutcome } : {}) }); setNotes(""); await load(); } catch (error) { setFormError(errorMessage(error)); } finally { setSaving(false); } }
   async function exportLedger() {
     setExporting(true); setExportError(undefined);
@@ -73,7 +93,7 @@ export function ReviewQueue() {
         <details className={styles.reasons}><summary>Recommendation reasons ({selected.recommendation.reasons.length})</summary><div className={styles.reasonList}>{selected.recommendation.reasons.map((reason) => <div key={`${reason.clause}-${reason.conclusion}`}><strong>{reason.clause}</strong><p>{reason.conclusion}</p><span>{reason.evidence}</span></div>)}</div></details>
         {selected.decisions.length > 0 && <div className={styles.ledger}><h3>Decision ledger</h3>{selected.decisions.map((entry) => <div className={styles.ledgerRow} key={entry.id}><span className={styles.ledgerMark}>{entry.sequence}</span><div><strong>{entry.effectiveOutcome} · {entry.analystName}</strong>{analystIdentities.find((identity) => identity.name === entry.analystName)?.role && <span>{analystIdentities.find((identity) => identity.name === entry.analystName)?.role}</span>}<p>{entry.notes}</p>{entry.overrideReason && <span>Override: {entry.overrideReason}</span>}<time dateTime={entry.recordedAt}>{new Date(entry.recordedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Riyadh" })}</time></div></div>)}</div>}
         {selected.sampleData ? <Alert tone="warning" title={t("Sample assessment — decision not available")}>{t("This recommendation comes from sample data and cannot be recorded as a final credit decision. Run a live assessment for this application before deciding it.")}</Alert> : <form className={styles.form} onSubmit={submit}><h3>{selected.queueStatus === "awaiting_second_analyst" ? "Independent decline review" : "Record decision"}</h3>{selected.queueStatus === "awaiting_second_analyst" && <Alert tone="warning" title="Four-eyes control">A different analyst must confirm the decline, or reject it and retain the original {selected.recommendation.outcome.toLocaleLowerCase()} recommendation.</Alert>}
-          <Field label="Record decision as" hint="Your selected identity and role will be written to the decision ledger."><Select value={analystIdentityId} onChange={(event) => setAnalystIdentityId(event.target.value as AnalystIdentityId)} options={analystIdentities.filter((identity) => identity.id !== (selected.queueStatus === "awaiting_second_analyst" ? selected.decisions.at(-1)?.analystId : undefined)).map((identity) => ({ value: identity.id, label: `${identity.name} — ${identity.role}` }))} /></Field>
+          <Field label="Record decision as" hint="Your selected identity and role will be written to the decision ledger."><Select value={analystIdentityId} onChange={(event) => setAnalystIdentityId(event.target.value as AnalystIdentityId)} options={availableAnalysts(selected).map((identity) => ({ value: identity.id, label: `${identity.name} — ${identity.role}` }))} /></Field>
           <div className={styles.actions} role="group" aria-label="Decision"><Button size="sm" variant={decision === "approve" ? "primary" : "secondary"} icon={<Check size={15}/>} onClick={() => setDecision("approve")} disabled={selected.recommendation.outcome !== "Approve"}>{selected.queueStatus === "awaiting_second_analyst" && selected.recommendation.outcome === "Approve" ? "Reject decline" : "Approve"}</Button><Button size="sm" variant={decision === "refer" ? "primary" : "secondary"} icon={<CornerUpRight size={15}/>} onClick={() => setDecision("refer")} disabled={selected.recommendation.outcome !== "Refer"}>{selected.queueStatus === "awaiting_second_analyst" && selected.recommendation.outcome === "Refer" ? "Reject decline" : "Refer"}</Button><Button size="sm" variant={decision === "override" ? "primary" : "secondary"} onClick={() => setDecision("override")} disabled={selected.queueStatus === "awaiting_second_analyst"}>Override</Button><Button size="sm" variant={decision === "decline" ? "danger" : "secondary"} icon={<ThumbsDown size={15}/>} onClick={() => setDecision("decline")}>{selected.queueStatus === "awaiting_second_analyst" ? "Confirm decline" : "Decline"}</Button></div>
           {decision === "override" && <div className={styles.overrideFields}><Field label="Override outcome"><Select value={overrideOutcome} onChange={(event) => setOverrideOutcome(event.target.value as typeof overrideOutcome)} options={[{ value: "Approve", label: "Approve" }, { value: "Refer", label: "Refer" }, { value: "Decline", label: "Decline" }]} /></Field><Field label="Appendix A reason"><Select value={overrideReason} onChange={(event) => setOverrideReason(event.target.value as OverrideReason)} options={overrideReasons.map((reason) => ({ value: reason, label: reason }))} /></Field></div>}
           <Field label="Reason and notes" hint="Recorded with your name and decision."><Textarea value={notes} onChange={(event) => setNotes(event.target.value)} required minLength={5} rows={3} /></Field>{formError && <Alert tone="danger" title="Decision not recorded">{formError}</Alert>}<Button type="submit" variant="primary" loading={saving}>Record {decision === "override" ? "override" : decision}</Button>

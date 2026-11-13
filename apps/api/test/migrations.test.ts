@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   MIGRATIONS_COLLECTION,
@@ -11,12 +12,14 @@ import {
 } from "../src/db/migrations.ts";
 import { up as loadSampleAssessmentTrails } from "../migrations/0014-load-sample-assessment-trails.ts";
 import { up as reconcileSampleAssessmentTrails } from "../migrations/0015-reconcile-sample-assessment-trails.ts";
+import { up as repairThroughputRun } from "../migrations/0016-repair-app-1029-throughput-run.ts";
+import { ApplicationChecksRepository } from "../src/features/applications/application-checks.repository.ts";
 import {
   validateRecommendationAgainstFindings,
   validateRecommendationCitations,
 } from "../src/features/applications/applications.service.ts";
 import type { ApplicationProduct, ApplicationCheckRun, CreditApplication } from "@app/contracts";
-import { useTestDatabase } from "./helpers.ts";
+import { testApp, useTestDatabase } from "./helpers.ts";
 
 const mongo = useTestDatabase();
 
@@ -195,7 +198,7 @@ describe("sample assessment trails", () => {
 
     for (const application of applications) {
       const runs = await mongo.db.collection<RunDoc>("applicationCheckRuns")
-        .find({ applicationId: application._id, sampleData: true, legacy: { $ne: true }, specialistFindings: { $exists: true } })
+        .find({ applicationId: application._id, sampleData: true, legacy: { $ne: true }, specialistFindings: { $exists: true }, _id: { $ne: "sample-assessment-app-1029-throughput" } })
         .toArray();
       expect(runs, `sample trails for ${application._id}`).toHaveLength(1);
       const run = runs[0]!;
@@ -279,24 +282,60 @@ describe("sample assessment trails", () => {
     }
   });
 
-  it("adds app-1029's sample trail as its own round and leaves the historical throughput run untouched", async () => {
+  it("repairs app-1029's historical throughput run into a readable shape without losing its record", async () => {
     await migrate(mongo.db);
     const runs = mongo.db.collection<RunDoc>("applicationCheckRuns");
     const historical = await runs.findOne({ _id: "sample-assessment-app-1029-throughput" });
     expect(historical).toMatchObject({
       applicationId: "app-1029",
+      scenario: "clean",
       status: "completed",
       startedAt: "2026-11-10T11:00:00.000Z",
       sampleData: true,
+      performedAt: new Date("2026-11-10T11:00:00.000Z"),
+      results: [],
+      recommendation: { outcome: "Approve", decisionAuthority: "Senior credit officer", reasons: [], reviewerChallenges: [] },
       finalRecommendation: { outcome: "Approve", decisionAuthority: "Senior credit officer", reasons: [] },
     });
     expect(historical).not.toHaveProperty("specialistFindings");
     expect(await runs.findOne({ _id: "sample-trail-app-1029" })).toMatchObject({ sampleData: true, status: "completed" });
 
-    const before = await runs.find({}).sort({ _id: 1 }).toArray();
-    await reconcileSampleAssessmentTrails(mongo.db);
-    const after = await runs.find({}).sort({ _id: 1 }).toArray();
+    // Every assessment-run read for the case must return a valid run rather than throwing on the historical round.
+    const checks = new ApplicationChecksRepository(mongo.db);
+    const listed = await checks.list("app-1029");
+    expect(listed.map((run) => run.id)).toEqual(expect.arrayContaining(["sample-assessment-app-1029-throughput", "sample-trail-app-1029"]));
+    const repaired = listed.find((run) => run.id === "sample-assessment-app-1029-throughput")!;
+    expect(repaired).toMatchObject({
+      startedAt: "2026-11-10T11:00:00.000Z",
+      completedAt: "2026-11-10T11:00:00.000Z",
+      specialistFindings: [],
+      reviewerChallenges: [],
+      revisedFindings: [],
+      finalRecommendation: { outcome: "Approve", decisionAuthority: "Senior credit officer", reasons: [] },
+    });
+    expect((await checks.find("app-1029", "sample-assessment-app-1029-throughput"))?.id).toBe("sample-assessment-app-1029-throughput");
+    expect((await checks.findById("sample-assessment-app-1029-throughput"))?.id).toBe("sample-assessment-app-1029-throughput");
+    const trail = await request(testApp(mongo.db)).get("/api/applications/app-1029/assessment-runs").expect(200);
+    expect(trail.body.items.map((run: { id: string }) => run.id)).toEqual(expect.arrayContaining(["sample-assessment-app-1029-throughput", "sample-trail-app-1029"]));
+    expect(trail.body.items.find((run: { id: string }) => run.id === "sample-assessment-app-1029-throughput")).toMatchObject({
+      startedAt: "2026-11-10T11:00:00.000Z",
+      completedAt: "2026-11-10T11:00:00.000Z",
+      specialistFindings: [],
+      finalRecommendation: { outcome: "Approve" },
+    });
+
+    const before = await runs.find({ applicationId: "app-1029" }).sort({ _id: 1 }).toArray();
+    await repairThroughputRun(mongo.db);
+    await repairThroughputRun(mongo.db);
+    const after = await runs.find({ applicationId: "app-1029" }).sort({ _id: 1 }).toArray();
     expect(after).toEqual(before);
+    expect(await runs.countDocuments({ applicationId: "app-1029", sampleData: true })).toBe(2);
+
+    const allBefore = await runs.find({}).sort({ _id: 1 }).toArray();
+    await loadSampleAssessmentTrails(mongo.db);
+    await reconcileSampleAssessmentTrails(mongo.db);
+    const allAfter = await runs.find({}).sort({ _id: 1 }).toArray();
+    expect(allAfter).toEqual(allBefore);
     expect((await runs.findOne({ _id: "sample-assessment-app-1029-throughput" }))).toEqual(historical);
   });
 
