@@ -55,6 +55,8 @@ export interface ApplicationCheckRun {
   startedAt: string; completedAt: string | null; specialistFindings: SpecialistFinding[]; reviewerChallenges: ReviewerChallenge[];
   revisedFindings: SpecialistFinding[]; finalRecommendation: CreditRecommendation | null; failureReason: string | null;
   interruptedReason?: string; createdBy: "Credit analyst";
+  /** True on a trail seeded as sample data; absent on an assessment a person actually ran. */
+  sampleData?: boolean;
   steps?: AssessmentStep[];
 }
 export interface AssessmentRunsResponse { items: ApplicationCheckRun[]; simulatedData: true }

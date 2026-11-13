@@ -202,6 +202,7 @@ function AssessmentRun({ run, latest }: { run: ApplicationCheckRun; latest: bool
           <span>Source scenario · {scenarioLabels[run.scenarioId]}</span>
         </div>
         <div>
+          {run.sampleData && <Badge tone="neutral">{t("Sample data")}</Badge>}
           <Badge tone={run.status === "completed" ? "success" : run.status === "running" ? "info" : "danger"}>{run.status}</Badge>
           <time dateTime={run.startedAt}>{dateTime.format(new Date(run.startedAt))}</time>
         </div>

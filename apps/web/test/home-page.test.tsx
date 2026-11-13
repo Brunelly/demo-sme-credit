@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { mockApi, renderAt, status } from "./helpers.tsx";
@@ -123,6 +123,15 @@ describe("SME Credit Desk", () => {
     expect(screen.getAllByText("Added the policy consequence.").length).toBeGreaterThan(0);
     expect(screen.queryByLabelText("Assessment scenario")).not.toBeInTheDocument();
     expect(screen.getByText("Source scenario · Low bureau score")).toBeInTheDocument();
+  });
+  it("labels a seeded assessment trail as sample data in the case screen", async () => {
+    mockApi({
+      "GET /api/applications": () => applications,
+      "GET /api/applications/app-1/assessment-runs": () => ({ items: [{ ...run, sampleData: true }], simulatedData: true }),
+    });
+    renderAt("/");
+    const trail = await screen.findByRole("article", { name: "Latest assessment" });
+    expect(within(trail).getByText("Sample data")).toBeVisible();
   });
   it("names the case-specific inputs missing for a grade and hides pricing in English and Arabic", async () => {
     const ungraded = {
