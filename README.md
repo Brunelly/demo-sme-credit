@@ -1,93 +1,135 @@
-# Acme App
+# SME Credit Desk
 
-A web app with AI features: a React front end, a Node API, a MongoDB database, and agents that run on
-[Maitento](https://docs.maitento.com). It starts blank (an empty page in the app's frame, over
-working plumbing and a generic AI endpoint) and grows one feature at a time.
+SME Credit Desk is a proof of concept for Rasikh Bank's SME credit desk. Relationship managers and credit
+analysts use it to work a queue of short-term SME finance applications — invoice financing and working-capital
+facilities — against the bank's SME credit policy, SME-CP-07.
 
-## Run it
+The AI prepares an evidence-led assessment and a non-binding recommendation. A named analyst makes every credit
+decision, and a decline needs a second, different analyst. The app runs on sample applications and simulated source
+data; it is demonstration software, not a production credit system.
 
-You need Node 22 and a MongoDB. The quickest MongoDB is Docker:
+## What it does now
+
+**Application queue and case workspace.** The Applications screen lists applications oldest first, with the
+business name in English and Arabic, commercial registration, product, requested amount in SAR and stage. Selecting
+a row opens the case beside the queue: product, facility, buyer quality where applicable, and every assessment run
+for that case. From there an analyst starts an assessment.
+
+**Assessment trail.** A run moves through four Maitento specialists in order: SIMAH credit bureau, Wathq company
+verification, ZATCA e-invoice verification and open-banking cash flow. Each records a plain-language finding with
+its source label, evidence and SME-CP-07 citations. An independent reviewer then accepts the finding, challenges it
+with an evidence gap or reasoning defect, or asks for human review; a challenged specialist gets one recorded rework
+pass. The final recommendation assistant combines the corrected findings into an Approve, Refer or Decline
+recommendation with a risk grade where the evidence supports one, missing grade inputs where it does not, a
+policy-cited reason tree, and the decision authority under SME-CP-07 §7.1. The recommendation is labelled
+non-binding, and progress, failures and interrupted runs are shown on the case.
+
+**Human decisions and four eyes.** The Review queue lists assessments awaiting a decision with the recommendation,
+required authority and existing decision history. An analyst records a decision as their named platform identity,
+with notes. A different outcome from the recommendation is an override and needs an Appendix A reason. A decline is
+not final until a different named analyst confirms it; the same person cannot satisfy both steps.
+
+**Decision ledger and CSV export.** Every decision is appended to the ledger with the assessment it belongs to, the
+actor, effective outcome, reason, time and sequence. Authorised roles can export the full ledger as a CSV with a
+Status column for final and pending decisions. Cells that could be read as spreadsheet formulas are neutralised, so
+the file opens safely in Excel.
+
+**Team throughput.** The Team throughput screen reports applications received this week (Monday to Sunday),
+completed decisions, average decision time, approvals, referrals, declines, the analyst override rate, and the
+recent final decisions behind those figures.
+
+The header switches the workspace between English and Arabic (including right-to-left layout) and light and dark
+themes.
+
+## Sample data
+
+The demonstration runs on sample data. Migrations load sample applications across Saudi cities, simulated source
+packs for each application, and completed sample assessment trails for applications past New. Records seeded by the
+migrations are marked **Sample data** in the UI.
+
+Assessments read simulated SIMAH credit-bureau reports, Wathq company records, ZATCA e-invoice clearance records
+and twelve months of open-banking bank statements. They do not connect to SIMAH, Wathq, ZATCA, open banking or any
+bank system.
+
+`SIMULATED_DATA_SCENARIO` chooses the simulated facts for each new assessment: `clean`, `disputed_invoice`,
+`low_bureau` or `returned_cheques`. Set it in the platform's Settings; there is no in-app scenario picker. Each
+assessment stores the scenario it used.
+
+## Run it locally
+
+Prerequisites: **Node.js 22** (the root package requires 22.22 or later) with npm, and **MongoDB**. A local MongoDB
+is enough:
 
 ```bash
-docker run -d --name app-mongo -p 27017:27017 mongo:8
+docker run -d --name sme-mongo -p 27017:27017 mongo:8
 ```
 
-Then:
+Then, from the repository root:
 
 ```bash
-cp .env.example .env      # the settings; the defaults work locally
+cp .env.example .env      # local defaults
 npm ci                    # install
-npm run migrate           # set up the database
-npm run dev               # the API and the web app, reloading as you edit
+npm run migrate           # create the schema and load the sample data
+npm run dev               # API and Vite, with reload
 ```
 
-Open http://localhost:5173. The UI kit is at http://localhost:5173/kit.
+Open http://localhost:5173. The API listens on `PORT` (3000 by default); Vite serves the web app and proxies
+`/api` to it. The component kit is at http://localhost:5173/kit in development.
 
-Without a Maitento key the app runs normally and the AI endpoint answers "AI not connected". To switch AI on, set
-`MAITENTO_API_KEY` and `MAITENTO_NAMESPACE` in `.env`, then deploy the app's definitions once with a key that
-may deploy: `npm run maitento:deploy`.
-
-### In a container
+To run everything in containers instead:
 
 ```bash
-docker compose up --build   # the app, MongoDB and the migrations; open http://localhost:3000
+docker compose up --build   # MongoDB, migrations and the app; open http://localhost:3000
 docker compose down         # stop (add -v to delete the data)
 ```
 
-The image (`Dockerfile`) is production-ready on its own: multi-stage, no dev dependencies, runs as a non-root
-user, one port, a health check on `/api/health`.
+### Migrations and sample data
+
+`npm run migrate` applies the numbered, up-only migrations in `apps/api/migrations/` once each and records them in
+`_migrations`. The sample data is loaded the same way: applications (`0001`), simulated sources (`0007`), the review
+queue (`0006`), throughput decisions (`0010`) and assessment trails (`0014`) are seeded by migrations. The
+migrations are idempotent, so running them again does not duplicate data. The database name is the path in
+`MONGODB_URI`.
+
+### Serving the web build
+
+`npm run build` type-checks the workspaces and builds the web app into `apps/web/dist`. With
+`NODE_ENV=production`, `npm start` serves the built app and `/api` from the same origin and port, so a refresh on
+`/reviews` or `/dashboard` still opens the app. In development, Vite serves the UI and proxies `/api` to the API.
+
+## Settings
+
+The API reads configuration only through `apps/api/src/config.ts`. Every variable is declared in `.env.example` and
+`poc.json`; set values in the platform's Settings, never in code or git.
+
+To run a Maitento-backed assessment, set:
+
+- `MAITENTO_API_KEY` — the app's Maitento key. Secret.
+- `MAITENTO_NAMESPACE` — the namespace where `maitento/` is deployed.
+- `MAITENTO_BASE_URL` — the Maitento API; defaults to `https://api.maitento.com`.
+
+For a local or self-hosted run, deploy the definitions in `maitento/` to that namespace once with
+`npm run maitento:deploy` (it needs a key allowed to deploy). Without a key the API still starts, but **Run
+assessment** answers "AI not connected".
+
+The other settings are:
+
+| Variable | What it does |
+|---|---|
+| `MONGODB_URI` | The MongoDB database; the database name is the URI path. Required in production. |
+| `PLATFORM_AUTH_SECRET` | Secret that verifies the short-lived platform identity on decision and ledger-export routes. Required in production. |
+| `SIMULATED_DATA_SCENARIO` | Scenario for new assessments: `clean` (default), `disputed_invoice`, `low_bureau` or `returned_cheques`. |
+| `PORT` | The one port the app listens on. |
+| `PUBLIC_URL` | The address people open the app at, for absolute links. |
+| `LOG_LEVEL` | The least important log line written: `debug`, `info`, `warn` or `error`. |
 
 ## Commands
 
 | Command | Does |
 |---|---|
-| `npm run dev` | the API (port `PORT`, restarts on change) and Vite (port 5173, proxies `/api`) |
-| `npm run build` | type-checks every workspace and builds the web app into `apps/web/dist` |
-| `npm test` | every test, the design-token check, the design detector (`npm run check:design`) and the offline check of `maitento/` |
-| `npm run migrate` | applies new migrations to `MONGODB_URI` |
-| `npm start` | the API on `PORT`; with `NODE_ENV=production` it also serves the built web app |
-| `npm run maitento:validate` / `maitento:deploy` | checks / deploys `maitento/` to `MAITENTO_NAMESPACE` |
-
-## Settings
-
-The app reads these environment variables and nothing else (`apps/api/src/config.ts`). Secrets never go in git.
-
-| Variable | What | Default |
-|---|---|---|
-| `PORT` | the one port the app listens on | `3000` |
-| `PUBLIC_URL` | where people open the app, for absolute links | `http://localhost:PORT` |
-| `MONGODB_URI` | the database; its path is the database name | `mongodb://localhost:27017/app` (required in production) |
-| `MAITENTO_BASE_URL` | the Maitento API | `https://api.maitento.com` |
-| `MAITENTO_API_KEY` | the app's Maitento key, `<user id>:<secret>` | none: AI features answer "AI not connected" |
-| `MAITENTO_NAMESPACE` | where `maitento/` is deployed and runs | none |
-| `SIMULATED_DATA_SCENARIO` | control-centre scenario for each new simulated assessment | `clean` |
-
-## How it's built
-
-```text
-apps/api/             Express 5 API: features/<name>/{routes,service,repository}, migrations/, tests
-apps/web/             React + Vite app: pages/, features/<name>/, routes.tsx, tests
-packages/contracts/   request schemas and response types shared by the API and the web app
-packages/ui/          the component kit; tokens.css holds every colour, size and font
-maitento/             the app's agents and interactions, deployed to Maitento
-poc.json              how to build, migrate, start and health-check the app (schema: poc.schema.json)
-AGENTS.md, CLAUDE.md  the rules for coding agents working here
-.agents/skills/       skills for coding agents (Maitento)
-```
-
-- **One port.** In production the API serves the web app and `/api` from the same origin. `/__brunelly/` is
-  reserved for the hosting platform and never served by the app.
-- **Database changes are migrations.** Each change is a new numbered file in `apps/api/migrations/` with an
-  `up(db)` and no `down`; `npm run migrate` applies the new ones, once each, and records them in `_migrations`.
-  Demo and reference data load the same way. Indexes are code: the app creates them when it starts.
-- **Long-running work survives restarts and deploys.** Work that outlives its request registers its collection with
-  `apps/api/src/db/long-running.ts`. When the app starts, it resumes what a previous process left running, or marks
-  it interrupted with a reason the UI shows.
-- **AI** goes through `apps/api/src/ai/maitento.ts`. The assistant calls the `ask-assistant` interaction in
-  `maitento/` and checks the answer's shape before using it.
-- **Branding** is `packages/ui/src/tokens.css` (colours, type), `apps/web/src/brand.ts` (the name in the top
-  bar), `apps/web/index.html` (the page title) and `apps/web/public/favicon.svg`.
-
-## Licences
-
-The Maitento skill in `.agents/skills/maitento/` is Apache-2.0; its `LICENSE` and `NOTICE` are next to it.
+| `npm run dev` | Starts the API (reloading on change) and Vite on port 5173. |
+| `npm run build` | Type-checks every workspace and builds the web app into `apps/web/dist`. |
+| `npm test` | Runs the tests plus the token, design and offline Maitento checks. |
+| `npm run migrate` | Applies pending migrations to `MONGODB_URI`. |
+| `npm start` | Starts the API; with `NODE_ENV=production` it also serves `apps/web/dist`. |
+| `npm run maitento:validate` / `maitento:deploy` | Validates or deploys `maitento/` to `MAITENTO_NAMESPACE`. |
