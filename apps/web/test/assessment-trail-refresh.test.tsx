@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { mockApi, renderAt } from "./helpers.tsx";
+import { mockApi, renderAt, status } from "./helpers.tsx";
 
 const at = "2026-11-13T08:42:00.000Z";
 
@@ -249,4 +249,80 @@ describe("assessment trail refresh", () => {
     expect(await screen.findByText(wathqFinding.plainLanguageFinding)).toBeVisible();
     expect(screen.queryByText(simahFinding.plainLanguageFinding)).not.toBeInTheDocument();
   });
+  it.each([401, 403])("clears the trail and case facts when a refresh is rejected with %i", async (code) => {
+    let requests = 0;
+    mockApi({
+      "GET /api/applications": () => applications,
+      "GET /api/applications/app-1/assessment-runs": () => {
+        requests += 1;
+        return requests === 1
+          ? { items: [runningRun], simulatedData: true }
+          : status(code, {
+              error: {
+                code: code === 401 ? "unauthorized" : "forbidden",
+                message: "This case is no longer available to you.",
+              },
+            });
+      },
+    });
+
+    renderAt("/");
+    expect(await screen.findByText(simahFinding.plainLanguageFinding)).toBeVisible();
+    expect(screen.getByText("Facility")).toBeVisible();
+
+    expect(await screen.findByText("Session ended", {}, { timeout: 2500 })).toBeVisible();
+    expect(screen.queryByText(simahFinding.plainLanguageFinding)).not.toBeInTheDocument();
+    expect(screen.queryByText("Facility")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
+  });
+
+  it("shows the not-found state and drops the trail when the case is gone", async () => {
+    let requests = 0;
+    mockApi({
+      "GET /api/applications": () => applications,
+      "GET /api/applications/app-1/assessment-runs": () => {
+        requests += 1;
+        return requests === 1
+          ? { items: [runningRun], simulatedData: true }
+          : status(404, { error: { code: "not_found", message: "This case no longer exists." } });
+      },
+    });
+
+    renderAt("/");
+    expect(await screen.findByText(simahFinding.plainLanguageFinding)).toBeVisible();
+    expect(screen.getByText("Facility")).toBeVisible();
+
+    expect(await screen.findByText("Case not found", {}, { timeout: 2500 })).toBeVisible();
+    expect(screen.queryByText(simahFinding.plainLanguageFinding)).not.toBeInTheDocument();
+    expect(screen.queryByText("Facility")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
+  });
+
+  it("keeps the last trail behind an explicit retry when a refresh fails transiently", async () => {
+    let requests = 0;
+    let networkDown = true;
+    mockApi({
+      "GET /api/applications": () => applications,
+      "GET /api/applications/app-1/assessment-runs": () => {
+        requests += 1;
+        if (requests === 1) return { items: [runningRun], simulatedData: true };
+        if (networkDown) throw new Error("network unavailable");
+        return { items: [completedRun], simulatedData: true };
+      },
+    });
+
+    renderAt("/");
+    expect(await screen.findByText(simahFinding.plainLanguageFinding)).toBeVisible();
+
+    expect(await screen.findByText("Assessment refresh failed", {}, { timeout: 2500 })).toBeVisible();
+    expect(screen.getByText("Showing the last loaded assessment trail. Try again to check for changes.")).toBeVisible();
+    expect(screen.getByText(simahFinding.plainLanguageFinding)).toBeVisible();
+
+    networkDown = false;
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByRole("heading", { name: "AI recommendation" }, { timeout: 2500 })).toBeVisible();
+    expect(screen.queryByText("Assessment refresh failed")).not.toBeInTheDocument();
+  });
+
 });
