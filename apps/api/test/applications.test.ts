@@ -305,4 +305,31 @@ describe("traceable Maitento assessments", () => {
     const rerun = await request(app).post("/api/applications/case-1/assessment-runs").send({}).expect(202);
     await vi.waitFor(async () => expect((await request(app).get(`/api/applications/case-1/assessment-runs/${rerun.body.id}`)).body.status).toBe("completed"));
   });
+  it("marks a legacy simulated run as sample data when fetched directly", async () => {
+    await mongo.db.collection("applications").insertOne({
+      _id: "legacy-case",
+      businessName: "Legacy Sample Trading",
+      businessNameArabic: "تجارة تجريبية",
+      commercialRegistration: "1010000077",
+      product: "working_capital",
+      amountSar: 900000,
+      stage: "credit_assessment",
+      receivedAt: new Date("2026-11-01T08:00:00Z"),
+      city: "Riyadh",
+      sampleData: true,
+    } as never);
+    await mongo.db.collection("applicationCheckRuns").insertOne({
+      _id: "legacy-run-1",
+      applicationId: "legacy-case",
+      scenario: "clean",
+      performedAt: new Date("2026-11-02T08:00:00Z"),
+      results: [{ specialist: "SIMAH credit bureau", clause: "SME-CP-07 §3.1", outcome: "pass", summary: "Legacy simulated bureau evidence.", evidence: ["Commercial score 714"] }],
+      recommendation: { outcome: "Approve", riskGrade: "B", indicativeProfitRate: "SAIBOR + 3.0%", decisionAuthority: "Credit analyst confirms", authorityClause: "SME-CP-07 §7.1", reasons: [], reviewerChallenges: [] },
+      sampleData: true,
+      legacy: true,
+    } as never);
+
+    const response = await request(testApp(mongo.db)).get("/api/applications/legacy-case/assessment-runs/legacy-run-1").expect(200);
+    expect(response.body).toMatchObject({ id: "legacy-run-1", sampleData: true });
+  });
 });

@@ -7,6 +7,7 @@
 .detail { min-width: 0; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
 .caseHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); border-bottom: var(--border-width) solid var(--color-border); padding-bottom: var(--space-3); }
 .caseHeader h2, .detail h3 { margin: 0; color: var(--color-text); }
+.headerBadges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
 .caseHeader h2 { font-size: var(--text-xl); letter-spacing: var(--tracking-tight); }
 .caseHeader p, .reasons p, .ledgerRow p { margin: var(--space-1) 0 0; }
 .caseHeader p { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-xs); }

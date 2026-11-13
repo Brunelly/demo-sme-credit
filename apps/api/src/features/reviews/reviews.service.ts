@@ -31,6 +31,7 @@ export class ReviewsService {
   async decide(applicationId: string, input: Input): Promise<DecisionRecord> {
     const item = await this.repository.findAwaitingDecision(applicationId);
     if (!item) throw new NotFoundError("The application is not awaiting an analyst decision.");
+    if (item.sampleData) throw new ConflictError("This recommendation comes from sample or legacy simulated data and cannot be recorded as a final credit decision. Run a live assessment before deciding this application.");
     if (input.analystIdentityId !== input.authenticatedProfileId) throw new AuthorizationError("Record the decision as your authenticated platform identity.");
     this.requireAuthority(item.authority, input.analystRole);
     if (input.assessmentRunId !== item.assessmentRunId) throw new ConflictError("This decision belongs to a different assessment. Refresh the review queue before continuing.");

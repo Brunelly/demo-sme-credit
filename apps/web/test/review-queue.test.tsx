@@ -92,6 +92,17 @@ describe("analyst review queue", () => {
     expect(screen.queryByRole("option", { name: "Maha Alotaibi — Credit analyst" })).not.toBeInTheDocument();
   });
 
+  it("explains why a sample recommendation cannot become a final decision", async () => {
+    mockApi({ "GET /api/reviews": () => ({ items: [{ ...item, sampleData: true }], sampleData: true }) });
+    renderAt("/reviews");
+    expect(await screen.findByText("Sample assessment — decision not available")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Reason and notes")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Record decision/i })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Switch to Arabic" }));
+    expect(await screen.findByText("تقييم تجريبي — القرار غير متاح")).toBeInTheDocument();
+  });
+
   it("clears case-specific notes, override selection and errors when another case is selected", async () => {
     const second = { ...item, application: { ...item.application, id: "app-1008", businessName: "Sample Eastern Services" } };
     mockApi({ "GET /api/reviews": () => ({ items: [item, second], sampleData: true }), "POST /api/reviews/app-1007/decisions": () => status(409, { error: { code: "conflict", message: "Ledger unavailable" } }) });

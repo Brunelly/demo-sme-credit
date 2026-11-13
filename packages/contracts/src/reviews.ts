@@ -33,5 +33,7 @@ export interface DecisionRecord {
 export interface ReviewQueueItem {
   application: CreditApplication; assessmentRunId: string; recommendation: CreditRecommendation; authority: DecisionAuthority;
   authorityClause: "SME-CP-07 §7.1"; decisions: DecisionRecord[]; queueStatus: "awaiting_decision" | "awaiting_second_analyst";
+  /** True when the recommendation came from a seeded or legacy simulated assessment, never a live decision. */
+  sampleData: boolean;
 }
 export interface ReviewQueueResponse { items: ReviewQueueItem[]; sampleData: boolean }
